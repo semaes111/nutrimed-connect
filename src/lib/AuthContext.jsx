@@ -11,30 +11,7 @@ export function AuthProvider({ children }) {
 
   // Resolve role + profile from session
   const resolveUser = useCallback(async (sess) => {
-    if (!sess?.user) {
-      setRole(null)
-      setProfile(null)
-      setLoading(false)
-      return
-    }
-    const userId = sess.user.id
-
-    // Check if professional
-    const { data: pro } = await supabase
-      .from('nm_professionals')
-      .select('*')
-      .eq('auth_user_id', userId)
-      .eq('is_active', true)
-      .maybeSingle()
-
-    if (pro) {
-      setRole('professional')
-      setProfile(pro)
-      setLoading(false)
-      return
-    }
-
-    // Check patient session in localStorage
+    // Check patient session in localStorage FIRST (patients don't use Supabase Auth)
     const patientSession = localStorage.getItem('nm_patient_session')
     if (patientSession) {
       try {
@@ -54,6 +31,29 @@ export function AuthProvider({ children }) {
         }
         localStorage.removeItem('nm_patient_session')
       } catch { /* ignore */ }
+    }
+
+    // No patient session — check Supabase Auth for professionals
+    if (!sess?.user) {
+      setRole(null)
+      setProfile(null)
+      setLoading(false)
+      return
+    }
+    const userId = sess.user.id
+
+    const { data: pro } = await supabase
+      .from('nm_professionals')
+      .select('*')
+      .eq('auth_user_id', userId)
+      .eq('is_active', true)
+      .maybeSingle()
+
+    if (pro) {
+      setRole('professional')
+      setProfile(pro)
+      setLoading(false)
+      return
     }
 
     setRole(null)

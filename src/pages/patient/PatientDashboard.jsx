@@ -13,6 +13,85 @@ const MEAL_CONFIG = {
   snack_afternoon: { icon: Cookie, label: 'Merienda',      color: '#EC4899', bg: '#FDF2F8' },
 }
 
+// Section badges for parsed meal sections
+const SECTION_STYLE = {
+  'BASE FIJA':            { badge: '🔒 Base fija', bg: '#F0F9FF', border: '#BAE6FD', text: '#0369A1' },
+  'OPCIONES VARIABLES':   { badge: '✨ Elige una opción', bg: '#FDF4FF', border: '#E9D5FF', text: '#7C3AED' },
+  'OPCIÓN A':             { badge: 'Opción A', bg: '#F0FDF4', border: '#BBF7D0', text: '#15803D' },
+  'OPCIÓN B':             { badge: 'Opción B', bg: '#FFFBEB', border: '#FDE68A', text: '#A16207' },
+  'OPCIÓN C':             { badge: 'Opción C', bg: '#FFF1F2', border: '#FECDD3', text: '#BE123C' },
+  'OPCIÓN D':             { badge: 'Opción D', bg: '#F0F9FF', border: '#BAE6FD', text: '#0369A1' },
+  'OPCIÓN E':             { badge: 'Opción E', bg: '#F5F3FF', border: '#DDD6FE', text: '#6D28D9' },
+}
+
+/** Parse structured meal text into visual sections */
+function MealContent({ text, compact = false }) {
+  if (!text) return null
+
+  // Check if text has sections (═══)
+  if (!text.includes('═══')) {
+    return <p className={`${compact ? 'text-[12px]' : 'text-[13px]'} text-gray-700 leading-relaxed whitespace-pre-line`}>{text}</p>
+  }
+
+  // Split by section headers
+  const sections = []
+  const regex = /═══\s*(.+?)\s*═══/g
+  let lastIndex = 0
+  let match
+
+  while ((match = regex.exec(text)) !== null) {
+    // Content before this header (skip if empty)
+    const before = text.slice(lastIndex, match.index).trim()
+    if (before && sections.length === 0) {
+      sections.push({ title: null, content: before })
+    }
+    lastIndex = match.index + match[0].length
+    
+    // Find content until next header or end
+    const nextMatch = regex.exec(text)
+    const endIdx = nextMatch ? nextMatch.index : text.length
+    const content = text.slice(lastIndex, endIdx).trim()
+    
+    sections.push({ title: match[1].trim(), content })
+    
+    if (nextMatch) {
+      // Reset regex to process next match
+      regex.lastIndex = nextMatch.index
+    } else {
+      lastIndex = text.length
+    }
+  }
+
+  if (sections.length === 0) {
+    return <p className="text-[13px] text-gray-700 leading-relaxed whitespace-pre-line">{text}</p>
+  }
+
+  return (
+    <div className={`space-y-2 ${compact ? 'text-[11px]' : 'text-[12px]'}`}>
+      {sections.map((s, i) => {
+        const style = s.title ? SECTION_STYLE[s.title] : null
+        
+        if (!style) {
+          return <p key={i} className="text-gray-600 leading-relaxed whitespace-pre-line">{s.content}</p>
+        }
+
+        return (
+          <div key={i} className="rounded-lg overflow-hidden" style={{ background: style.bg, border: `1px solid ${style.border}` }}>
+            <div className="px-2.5 py-1" style={{ borderBottom: `1px solid ${style.border}` }}>
+              <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: style.text }}>
+                {style.badge}
+              </span>
+            </div>
+            <div className="px-2.5 py-2">
+              <p className="text-gray-700 leading-relaxed whitespace-pre-line">{s.content}</p>
+            </div>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
 export default function PatientDashboard() {
   const { profile } = useAuth()
   const [data, setData] = useState(null)
@@ -65,7 +144,7 @@ export default function PatientDashboard() {
 
   return (
     <PatientLayout>
-      {/* ===== TODAY'S DIET + MEALS CARD ===== */}
+      {/* ===== TODAY'S DIET + MEALS ===== */}
       {todayDiet && (
         <div className="mb-4 rounded-2xl overflow-hidden" style={{ background: `linear-gradient(135deg, ${todayDiet.bg} 0%, white 100%)`, border: `1px solid ${todayDiet.color}20` }}>
           <div className="px-4 py-3" style={{ borderBottom: hasTodayMeals ? `1px solid ${todayDiet.color}15` : 'none' }}>
@@ -84,20 +163,22 @@ export default function PatientDashboard() {
           </div>
 
           {hasTodayMeals && (
-            <div className="px-4 py-3 space-y-3">
+            <div className="px-4 py-3 space-y-4">
               {['breakfast', 'snack_morning', 'lunch', 'snack_afternoon', 'dinner'].map(key => {
                 const value = todayMeals[key]
                 if (!value) return null
                 const cfg = MEAL_CONFIG[key]
                 const Icon = cfg.icon
                 return (
-                  <div key={key} className="flex gap-3">
-                    <div className="flex-shrink-0 w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: cfg.bg }}>
-                      <Icon size={14} style={{ color: cfg.color }} />
+                  <div key={key}>
+                    <div className="flex items-center gap-2 mb-2">
+                      <div className="w-7 h-7 rounded-lg flex items-center justify-center" style={{ background: cfg.bg }}>
+                        <Icon size={13} style={{ color: cfg.color }} />
+                      </div>
+                      <p className="text-[11px] font-bold uppercase tracking-wider" style={{ color: cfg.color }}>{cfg.label}</p>
                     </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-[10px] font-bold uppercase tracking-wider" style={{ color: cfg.color }}>{cfg.label}</p>
-                      <p className="text-[13px] text-gray-700 leading-relaxed whitespace-pre-line">{value}</p>
+                    <div className="ml-9">
+                      <MealContent text={value} />
                     </div>
                   </div>
                 )
@@ -143,7 +224,7 @@ export default function PatientDashboard() {
         </div>
       </div>
 
-      {/* ===== WEEKLY PLAN WITH EXPANDABLE MEALS ===== */}
+      {/* ===== WEEKLY PLAN ===== */}
       <div className="mb-4">
         <p className="text-sm font-semibold text-gray-900 mb-3 flex items-center gap-2">
           <Calendar size={14} /> Plan semanal
@@ -188,20 +269,22 @@ export default function PatientDashboard() {
                 </button>
 
                 {isExpanded && hasMeals && (
-                  <div className="px-3 pb-3 pt-1 space-y-2.5 border-t" style={{ borderColor: cfg ? `${cfg.color}15` : '#E5E7EB' }}>
+                  <div className="px-3 pb-3 pt-2 space-y-3 border-t bg-white" style={{ borderColor: cfg ? `${cfg.color}15` : '#E5E7EB' }}>
                     {['breakfast', 'snack_morning', 'lunch', 'snack_afternoon', 'dinner'].map(key => {
                       const value = dayMeals[key]
                       if (!value) return null
                       const mCfg = MEAL_CONFIG[key]
                       const Icon = mCfg.icon
                       return (
-                        <div key={key} className="flex gap-2.5">
-                          <div className="flex-shrink-0 w-7 h-7 rounded-lg flex items-center justify-center" style={{ background: mCfg.bg }}>
-                            <Icon size={13} style={{ color: mCfg.color }} />
+                        <div key={key}>
+                          <div className="flex items-center gap-2 mb-1.5">
+                            <div className="w-6 h-6 rounded-md flex items-center justify-center" style={{ background: mCfg.bg }}>
+                              <Icon size={12} style={{ color: mCfg.color }} />
+                            </div>
+                            <p className="text-[10px] font-bold uppercase tracking-wider" style={{ color: mCfg.color }}>{mCfg.label}</p>
                           </div>
-                          <div className="flex-1 min-w-0">
-                            <p className="text-[10px] font-bold uppercase tracking-wider mb-0.5" style={{ color: mCfg.color }}>{mCfg.label}</p>
-                            <p className="text-[12px] text-gray-600 leading-relaxed whitespace-pre-line">{value}</p>
+                          <div className="ml-8">
+                            <MealContent text={value} compact />
                           </div>
                         </div>
                       )

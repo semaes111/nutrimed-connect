@@ -722,9 +722,25 @@ function AccessTab({ patient, onUpdate }) {
 
   async function handleCopy() {
     if (!patient.access_code) return
-    await navigator.clipboard.writeText(patient.access_code)
-    setCopied(true)
-    setTimeout(() => setCopied(false), 2000)
+    try {
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(patient.access_code)
+      } else {
+        const ta = document.createElement('textarea')
+        ta.value = patient.access_code
+        ta.style.cssText = 'position:fixed;left:-9999px'
+        document.body.appendChild(ta)
+        ta.select()
+        document.execCommand('copy')
+        document.body.removeChild(ta)
+      }
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    } catch {
+      // Last resort: select the code text so user can Ctrl+C
+      const el = document.querySelector('[data-code]')
+      if (el) { const range = document.createRange(); range.selectNodeContents(el); window.getSelection()?.removeAllRanges(); window.getSelection()?.addRange(range) }
+    }
   }
 
   const daysLeft = getDaysRemaining(patient.code_expiry)
@@ -737,7 +753,7 @@ function AccessTab({ patient, onUpdate }) {
         {patient.access_code ? (
           <div className="space-y-4">
             <div className="flex items-center gap-3">
-              <div className="flex-1 bg-gray-50 rounded-xl px-4 py-3 font-mono text-2xl tracking-[0.3em] text-center font-bold text-gray-800 select-all">
+              <div data-code className="flex-1 bg-gray-50 rounded-xl px-4 py-3 font-mono text-2xl tracking-[0.3em] text-center font-bold text-gray-800 select-all">
                 {patient.access_code}
               </div>
               <button onClick={handleCopy} className="btn btn-secondary !p-3 !rounded-xl" title="Copiar">

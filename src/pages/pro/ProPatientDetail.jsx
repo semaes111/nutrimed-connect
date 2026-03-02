@@ -4,6 +4,7 @@ import { useAuth } from '../../lib/AuthContext'
 import { supabase } from '../../lib/supabase'
 import { getDietConfig, DAYS_ORDER, DAY_LABELS, formatDate, formatDateShort, getDaysRemaining } from '../../lib/dietConfig'
 import ProLayout from '../../components/layout/ProLayout'
+import MealsTab from '../../components/pro/MealsTab'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts'
 import {
   ArrowLeft, Edit, Scale, Target, Pill, Calendar, User, Heart, Brain,
@@ -14,6 +15,7 @@ import {
 const TABS = [
   { key: 'overview', label: 'General' },
   { key: 'diet', label: 'Dietas' },
+  { key: 'meals', label: 'Menús' },
   { key: 'weight', label: 'Peso' },
   { key: 'meds', label: 'Medicación' },
   { key: 'access', label: 'Acceso' },
@@ -89,6 +91,7 @@ export default function ProPatientDetail() {
       <div className="page-enter">
         {tab === 'overview' && <OverviewTab patient={patient} />}
         {tab === 'diet' && <DietTab patient={patient} professionalId={profile?.id} onUpdate={load} />}
+        {tab === 'meals' && <MealsTab patient={patient} professionalId={profile?.id} />}
         {tab === 'weight' && <WeightTab patient={patient} />}
         {tab === 'meds' && <MedsTab patient={patient} onUpdate={load} />}
         {tab === 'access' && <AccessTab patient={patient} onUpdate={load} />}

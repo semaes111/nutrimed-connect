@@ -3,12 +3,21 @@ import { useAuth } from '../../lib/AuthContext'
 import { supabase } from '../../lib/supabase'
 import { getDietConfig, DAYS_ORDER, DAY_LABELS, getTodaySlug, getDaysRemaining } from '../../lib/dietConfig'
 import PatientLayout from '../../components/layout/PatientLayout'
-import { Scale, Pill, Calendar, Clock, TrendingDown, TrendingUp } from 'lucide-react'
+import { Scale, Pill, Calendar, Clock, TrendingDown, TrendingUp, Coffee, Sun, Moon, Cookie, ChevronDown, ChevronUp } from 'lucide-react'
+
+const MEAL_CONFIG = {
+  breakfast:       { icon: Coffee, label: 'Desayuno',      color: '#F59E0B', bg: '#FFFBEB' },
+  lunch:           { icon: Sun,    label: 'Comida',        color: '#F97316', bg: '#FFF7ED' },
+  dinner:          { icon: Moon,   label: 'Cena',          color: '#6366F1', bg: '#EEF2FF' },
+  snack_morning:   { icon: Cookie, label: 'Media mañana',  color: '#EC4899', bg: '#FDF2F8' },
+  snack_afternoon: { icon: Cookie, label: 'Merienda',      color: '#EC4899', bg: '#FDF2F8' },
+}
 
 export default function PatientDashboard() {
   const { profile } = useAuth()
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
+  const [expandedDay, setExpandedDay] = useState(null)
 
   useEffect(() => {
     if (!profile?.id) return
@@ -18,15 +27,21 @@ export default function PatientDashboard() {
   async function loadDashboard() {
     setLoading(true)
     const pid = profile.id
-    const [plansRes, weightsRes, medsRes] = await Promise.all([
+    const [plansRes, weightsRes, medsRes, mealsRes] = await Promise.all([
       supabase.from('nm_diet_plans').select('*').eq('patient_id', pid).eq('is_active', true),
       supabase.from('nm_weight_records').select('*').eq('patient_id', pid).order('date', { ascending: false }).limit(10),
       supabase.from('nm_medications').select('*').eq('patient_id', pid).eq('is_active', true),
+      supabase.from('nm_daily_meals').select('*').eq('patient_id', pid).eq('is_active', true),
     ])
+
+    const mealsMap = {}
+    ;(mealsRes.data || []).forEach(m => { mealsMap[m.day_of_week] = m })
+
     setData({
       plans: plansRes.data || [],
       weights: weightsRes.data || [],
       meds: medsRes.data || [],
+      meals: mealsMap,
     })
     setLoading(false)
   }
@@ -38,31 +53,64 @@ export default function PatientDashboard() {
   const today = getTodaySlug()
   const todayPlan = data.plans.find(p => p.day_of_week === today) || data.plans.find(p => p.day_of_week === 'todos')
   const todayDiet = todayPlan ? getDietConfig(todayPlan.diet_type) : null
+  const todayMeals = data.meals[today]
 
   const lastWeight = data.weights[0]
   const prevWeight = data.weights[1]
   const weightChange = lastWeight && prevWeight ? (Number(lastWeight.weight) - Number(prevWeight.weight)).toFixed(1) : null
   const totalChange = lastWeight && profile.initial_weight ? (Number(lastWeight.weight) - Number(profile.initial_weight)).toFixed(1) : null
-
   const daysLeft = getDaysRemaining(profile.code_expiry)
+
+  const hasTodayMeals = todayMeals && (todayMeals.breakfast || todayMeals.lunch || todayMeals.dinner)
 
   return (
     <PatientLayout>
-      {/* Today's diet card */}
+      {/* ===== TODAY'S DIET + MEALS CARD ===== */}
       {todayDiet && (
-        <div className="card card--elevated mb-4" style={{ background: `linear-gradient(135deg, ${todayDiet.bg} 0%, white 100%)`, borderLeft: `4px solid ${todayDiet.color}` }}>
-          <p className="text-[11px] font-semibold uppercase tracking-wider mb-1" style={{ color: todayDiet.color }}>Dieta de hoy — {DAY_LABELS[today]}</p>
-          <div className="flex items-center gap-3">
-            <span className="text-3xl">{todayDiet.icon}</span>
-            <div>
-              <p className="text-lg font-bold text-gray-900" style={{ fontFamily: 'var(--font-display)' }}>{todayPlan.diet_name || todayDiet.label}</p>
-              {todayPlan.notes && <p className="text-xs text-gray-500 mt-0.5">{todayPlan.notes}</p>}
+        <div className="mb-4 rounded-2xl overflow-hidden" style={{ background: `linear-gradient(135deg, ${todayDiet.bg} 0%, white 100%)`, border: `1px solid ${todayDiet.color}20` }}>
+          <div className="px-4 py-3" style={{ borderBottom: hasTodayMeals ? `1px solid ${todayDiet.color}15` : 'none' }}>
+            <p className="text-[10px] font-bold uppercase tracking-widest mb-1" style={{ color: todayDiet.color }}>
+              {DAY_LABELS[today]} — Tu dieta hoy
+            </p>
+            <div className="flex items-center gap-3">
+              <span className="text-3xl">{todayDiet.icon}</span>
+              <div>
+                <p className="text-lg font-bold text-gray-900" style={{ fontFamily: 'var(--font-display)' }}>
+                  {todayPlan.diet_name || todayDiet.label}
+                </p>
+                {todayPlan.notes && <p className="text-[11px] text-gray-500">{todayPlan.notes}</p>}
+              </div>
             </div>
           </div>
+
+          {hasTodayMeals && (
+            <div className="px-4 py-3 space-y-3">
+              {['breakfast', 'snack_morning', 'lunch', 'snack_afternoon', 'dinner'].map(key => {
+                const value = todayMeals[key]
+                if (!value) return null
+                const cfg = MEAL_CONFIG[key]
+                const Icon = cfg.icon
+                return (
+                  <div key={key} className="flex gap-3">
+                    <div className="flex-shrink-0 w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: cfg.bg }}>
+                      <Icon size={14} style={{ color: cfg.color }} />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-[10px] font-bold uppercase tracking-wider" style={{ color: cfg.color }}>{cfg.label}</p>
+                      <p className="text-[13px] text-gray-700 leading-relaxed whitespace-pre-line">{value}</p>
+                    </div>
+                  </div>
+                )
+              })}
+              {todayMeals.notes && (
+                <p className="text-[11px] text-gray-400 italic pt-1 border-t border-gray-100">💡 {todayMeals.notes}</p>
+              )}
+            </div>
+          )}
         </div>
       )}
 
-      {/* Stats grid */}
+      {/* ===== STATS GRID ===== */}
       <div className="grid grid-cols-3 gap-2 mb-4">
         <div className="card !p-3">
           <div className="flex items-center gap-1.5 mb-1">
@@ -77,7 +125,6 @@ export default function PatientDashboard() {
             </p>
           )}
         </div>
-
         <div className="card !p-3">
           <div className="flex items-center gap-1.5 mb-1">
             <TrendingDown size={13} className="text-blue-500" />
@@ -86,7 +133,6 @@ export default function PatientDashboard() {
           <p className="text-xl font-bold text-gray-900">{totalChange ? `${Number(totalChange) > 0 ? '+' : ''}${totalChange}` : '—'}</p>
           <p className="text-[10px] text-gray-400">kg desde inicio</p>
         </div>
-
         <div className="card !p-3">
           <div className="flex items-center gap-1.5 mb-1">
             <Pill size={13} className="text-purple-500" />
@@ -97,31 +143,79 @@ export default function PatientDashboard() {
         </div>
       </div>
 
-      {/* Weekly plan */}
+      {/* ===== WEEKLY PLAN WITH EXPANDABLE MEALS ===== */}
       <div className="mb-4">
         <p className="text-sm font-semibold text-gray-900 mb-3 flex items-center gap-2">
           <Calendar size={14} /> Plan semanal
         </p>
-        <div className="grid grid-cols-7 gap-1.5">
+        <div className="space-y-2">
           {DAYS_ORDER.map(day => {
             const plan = data.plans.find(p => p.day_of_week === day) || data.plans.find(p => p.day_of_week === 'todos')
             const cfg = plan ? getDietConfig(plan.diet_type) : null
             const isToday = day === today
+            const dayMeals = data.meals[day]
+            const hasMeals = dayMeals && (dayMeals.breakfast || dayMeals.lunch || dayMeals.dinner)
+            const isExpanded = expandedDay === day
+
             return (
-              <div key={day} className={`text-center rounded-xl py-2 px-0.5 transition ${isToday ? 'ring-2 ring-[var(--color-brand)] ring-offset-1' : ''}`}
-                style={cfg ? { background: cfg.bg } : { background: '#F9FAFB' }}>
-                <p className={`text-[9px] font-semibold ${isToday ? 'text-[var(--color-brand)]' : 'text-gray-400'}`}>
-                  {DAY_LABELS[day]?.slice(0, 3)}
-                </p>
-                <span className="text-base leading-none">{cfg?.icon || '—'}</span>
-                {cfg && <p className="text-[8px] font-semibold truncate px-0.5" style={{ color: cfg.color }}>{cfg.label}</p>}
+              <div key={day}
+                className={`rounded-xl overflow-hidden transition-all ${isToday ? 'ring-2 ring-[var(--color-brand)] ring-offset-1' : ''}`}
+                style={cfg ? { background: isExpanded ? 'white' : cfg.bg, border: `1px solid ${cfg.color}20` } : { background: '#F9FAFB', border: '1px solid #E5E7EB' }}
+              >
+                <button
+                  onClick={() => hasMeals && setExpandedDay(isExpanded ? null : day)}
+                  className={`w-full flex items-center gap-3 px-3 py-2.5 transition ${hasMeals ? 'cursor-pointer hover:bg-white/60' : 'cursor-default'}`}
+                >
+                  <div className="flex items-center gap-2.5 flex-1 min-w-0">
+                    {isToday && <span className="w-2 h-2 rounded-full bg-[var(--color-brand)] animate-pulse flex-shrink-0" />}
+                    <span className="text-base leading-none">{cfg?.icon || '—'}</span>
+                    <div className="text-left min-w-0">
+                      <p className={`text-xs font-semibold ${isToday ? 'text-[var(--color-brand)]' : 'text-gray-700'}`}>
+                        {DAY_LABELS[day]}
+                      </p>
+                      {cfg && <p className="text-[10px] truncate" style={{ color: cfg.color }}>{plan.diet_name || cfg.label}</p>}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1.5 flex-shrink-0">
+                    {hasMeals && (
+                      <>
+                        <MealDots meals={dayMeals} />
+                        {isExpanded ? <ChevronUp size={14} className="text-gray-400" /> : <ChevronDown size={14} className="text-gray-400" />}
+                      </>
+                    )}
+                    {!hasMeals && <span className="text-[10px] text-gray-300">Sin menú</span>}
+                  </div>
+                </button>
+
+                {isExpanded && hasMeals && (
+                  <div className="px-3 pb-3 pt-1 space-y-2.5 border-t" style={{ borderColor: cfg ? `${cfg.color}15` : '#E5E7EB' }}>
+                    {['breakfast', 'snack_morning', 'lunch', 'snack_afternoon', 'dinner'].map(key => {
+                      const value = dayMeals[key]
+                      if (!value) return null
+                      const mCfg = MEAL_CONFIG[key]
+                      const Icon = mCfg.icon
+                      return (
+                        <div key={key} className="flex gap-2.5">
+                          <div className="flex-shrink-0 w-7 h-7 rounded-lg flex items-center justify-center" style={{ background: mCfg.bg }}>
+                            <Icon size={13} style={{ color: mCfg.color }} />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-[10px] font-bold uppercase tracking-wider mb-0.5" style={{ color: mCfg.color }}>{mCfg.label}</p>
+                            <p className="text-[12px] text-gray-600 leading-relaxed whitespace-pre-line">{value}</p>
+                          </div>
+                        </div>
+                      )
+                    })}
+                    {dayMeals.notes && <p className="text-[10px] text-gray-400 italic pt-1">💡 {dayMeals.notes}</p>}
+                  </div>
+                )}
               </div>
             )
           })}
         </div>
       </div>
 
-      {/* Active medications */}
+      {/* ===== ACTIVE MEDICATIONS ===== */}
       {data.meds.length > 0 && (
         <div className="mb-4">
           <p className="text-sm font-semibold text-gray-900 mb-2 flex items-center gap-2">
@@ -143,7 +237,7 @@ export default function PatientDashboard() {
         </div>
       )}
 
-      {/* Access countdown */}
+      {/* ===== ACCESS COUNTDOWN ===== */}
       {daysLeft !== null && (
         <div className="card !p-3 flex items-center gap-3" style={{ background: daysLeft <= 7 ? '#FEF3C7' : '#F0FDFA' }}>
           <Clock size={16} className={daysLeft <= 7 ? 'text-amber-500' : 'text-teal-400'} />
@@ -155,5 +249,23 @@ export default function PatientDashboard() {
         </div>
       )}
     </PatientLayout>
+  )
+}
+
+function MealDots({ meals }) {
+  const dots = [
+    { key: 'breakfast', color: MEAL_CONFIG.breakfast.color, filled: !!meals.breakfast },
+    { key: 'lunch', color: MEAL_CONFIG.lunch.color, filled: !!meals.lunch },
+    { key: 'dinner', color: MEAL_CONFIG.dinner.color, filled: !!meals.dinner },
+  ]
+  return (
+    <div className="flex gap-1">
+      {dots.map(d => (
+        <span key={d.key} className="w-2 h-2 rounded-full"
+          style={{ background: d.filled ? d.color : '#E5E7EB' }}
+          title={d.filled ? MEAL_CONFIG[d.key].label : `Sin ${MEAL_CONFIG[d.key].label.toLowerCase()}`}
+        />
+      ))}
+    </div>
   )
 }

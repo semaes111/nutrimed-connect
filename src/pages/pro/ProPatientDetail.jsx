@@ -165,23 +165,35 @@ function OverviewTab({ patient }) {
 
 /* ============== DIET TAB ============== */
 function DietTab({ patient, professionalId, onUpdate }) {
-  const [plans, setPlans] = useState([])
+  const [weeklyDiet, setWeeklyDiet] = useState([])
+  const [basePlan, setBasePlan] = useState(null)
   const [loading, setLoading] = useState(true)
   const [dietas, setDietas] = useState([])
-  const [saving, setSaving] = useState(false)
+  const [saving, setSaving] = useState(null) // null | 'base' | day string
+  const [editingDay, setEditingDay] = useState(null)
 
-  useEffect(() => { loadPlans(); loadDietas() }, [])
+  useEffect(() => { loadAll() }, [])
 
-  async function loadPlans() {
+  async function loadAll() {
     setLoading(true)
+    await Promise.all([loadWeekly(), loadBase(), loadDietas()])
+    setLoading(false)
+  }
+
+  async function loadWeekly() {
+    const { data } = await supabase.rpc('get_patient_weekly_diet', { p_patient_id: patient.id })
+    setWeeklyDiet(data || [])
+  }
+
+  async function loadBase() {
     const { data } = await supabase
       .from('nm_diet_plans')
-      .select('*')
+      .select('*, dieta_ref:dietas_validas(nombre, slug, nivel_restriccion)')
       .eq('patient_id', patient.id)
+      .eq('day_of_week', 'todos')
       .eq('is_active', true)
-      .order('created_at', { ascending: true })
-    setPlans(data || [])
-    setLoading(false)
+      .maybeSingle()
+    setBasePlan(data || null)
   }
 
   async function loadDietas() {
@@ -189,65 +201,209 @@ function DietTab({ patient, professionalId, onUpdate }) {
     setDietas(data || [])
   }
 
-  async function handleAssign(day, dietSlug, dietName) {
-    setSaving(true)
-    // Remove existing plan for this day
-    await supabase.from('nm_diet_plans').delete().eq('patient_id', patient.id).eq('day_of_week', day).eq('is_active', true)
-    if (dietSlug) {
-      // Find dieta_valida_id
-      const dieta = dietas.find(d => d.slug === dietSlug)
-      await supabase.from('nm_diet_plans').insert({
-        patient_id: patient.id,
-        professional_id: professionalId,
-        dieta_valida_id: dieta?.id || null,
-        diet_type: dietSlug,
-        diet_name: dietName || dieta?.nombre || dietSlug,
-        day_of_week: day,
-        is_active: true,
-      })
-    }
-    await loadPlans()
-    setSaving(false)
+  async function handleAssignBase(dietSlug) {
+    if (!dietSlug) return
+    setSaving('base')
+    const dieta = dietas.find(d => d.slug === dietSlug)
+    if (!dieta) { setSaving(null); return }
+    await supabase.rpc('assign_base_diet', {
+      p_patient_id: patient.id,
+      p_professional_id: professionalId,
+      p_dieta_valida_id: dieta.id,
+      p_diet_type: dieta.slug,
+      p_diet_name: dieta.nombre,
+    })
+    await Promise.all([loadWeekly(), loadBase()])
+    setSaving(null)
+  }
+
+  async function handleOverrideDay(day, dietSlug) {
+    if (!dietSlug) return
+    setSaving(day)
+    const dieta = dietas.find(d => d.slug === dietSlug)
+    if (!dieta) { setSaving(null); return }
+    await supabase.rpc('override_day_diet', {
+      p_patient_id: patient.id,
+      p_professional_id: professionalId,
+      p_dieta_valida_id: dieta.id,
+      p_diet_type: dieta.slug,
+      p_day_of_week: day,
+      p_diet_name: dieta.nombre,
+    })
+    await loadWeekly()
+    setSaving(null)
+    setEditingDay(null)
+  }
+
+  async function handleRemoveOverride(day) {
+    setSaving(day)
+    await supabase.rpc('remove_day_override', {
+      p_patient_id: patient.id,
+      p_day_of_week: day,
+    })
+    await loadWeekly()
+    setSaving(null)
   }
 
   if (loading) return <div className="flex justify-center py-10"><div className="loader" /></div>
 
-  const planMap = {}
-  plans.forEach(p => { planMap[p.day_of_week] = p })
+  const baseCfg = basePlan ? getDietConfig(basePlan.diet_type) : null
+  const overrideCount = weeklyDiet.filter(d => d.source === 'override').length
 
   return (
-    <div>
-      <p className="text-sm text-gray-500 mb-4">Asigna un tipo de dieta para cada día de la semana. Puedes mezclar dietas según la planificación.</p>
-      <div className="space-y-2">
-        {DAYS_ORDER.map(day => {
-          const plan = planMap[day]
-          const cfg = plan ? getDietConfig(plan.diet_type) : null
-          return (
-            <div key={day} className="card !p-3 flex items-center gap-4">
-              <span className="text-sm font-semibold text-gray-700 w-24">{DAY_LABELS[day]}</span>
-              <select
-                value={plan?.diet_type || ''}
-                onChange={e => {
-                  const sel = dietas.find(d => d.slug === e.target.value)
-                  handleAssign(day, e.target.value, sel?.nombre || '')
-                }}
-                className="input flex-1 !py-2 text-sm"
-                disabled={saving}
-              >
-                <option value="">Sin asignar</option>
-                {dietas.map(d => (
-                  <option key={d.slug} value={d.slug}>{d.nombre} (nivel {d.nivel_restriccion})</option>
-                ))}
-              </select>
-              {cfg && (
-                <span className="inline-block px-2.5 py-1 rounded-full text-xs font-medium shrink-0" style={{ backgroundColor: cfg.bg, color: cfg.color }}>
-                  {cfg.icon} {cfg.label}
+    <div className="space-y-6">
+      {/* BASE DIET SELECTOR */}
+      <div className="card card--elevated" style={baseCfg ? { borderLeft: `4px solid ${baseCfg.color}`, background: `linear-gradient(135deg, ${baseCfg.bg}44 0%, white 60%)` } : {}}>
+        <div className="flex items-center justify-between mb-3">
+          <div>
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider flex items-center gap-2">
+              <Calendar size={13} /> Dieta base · Todos los días
+            </p>
+            {baseCfg && (
+              <p className="text-[11px] text-gray-400 mt-0.5">
+                Se aplica a los {7 - overrideCount} días sin personalización
+              </p>
+            )}
+          </div>
+          {baseCfg && (
+            <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold" style={{ backgroundColor: baseCfg.bg, color: baseCfg.color }}>
+              {baseCfg.icon} {baseCfg.label}
+            </span>
+          )}
+        </div>
+
+        <select
+          value={basePlan?.diet_type || ''}
+          onChange={e => handleAssignBase(e.target.value)}
+          className="input w-full !py-2.5 text-sm font-medium"
+          disabled={saving === 'base'}
+        >
+          <option value="">— Selecciona dieta base —</option>
+          {dietas.map(d => (
+            <option key={d.slug} value={d.slug}>{d.nombre} (nivel {d.nivel_restriccion})</option>
+          ))}
+        </select>
+
+        {!basePlan && (
+          <p className="text-xs text-amber-600 mt-2 flex items-center gap-1.5">
+            <AlertTriangle size={12} /> Selecciona una dieta base primero. Luego podrás personalizar días sueltos.
+          </p>
+        )}
+      </div>
+
+      {/* WEEKLY GRID */}
+      {basePlan && (
+        <div>
+          <div className="flex items-center justify-between mb-3">
+            <p className="text-sm font-semibold text-gray-800 flex items-center gap-2">
+              Plan semanal
+              {overrideCount > 0 && (
+                <span className="text-[11px] font-normal text-gray-400">
+                  ({overrideCount} {overrideCount === 1 ? 'día personalizado' : 'días personalizados'})
                 </span>
               )}
-            </div>
-          )
-        })}
-      </div>
+            </p>
+          </div>
+
+          <div className="space-y-1.5">
+            {DAYS_ORDER.map(day => {
+              const dayData = weeklyDiet.find(d => d.day_of_week === day)
+              const isOverride = dayData?.source === 'override'
+              const cfg = dayData ? getDietConfig(dayData.diet_type) : baseCfg
+              const isEditing = editingDay === day
+              const isSaving = saving === day
+
+              return (
+                <div key={day}>
+                  <div
+                    className={`card !p-3 flex items-center gap-3 cursor-pointer transition-all hover:shadow-md ${isOverride ? 'ring-1 ring-offset-1' : ''}`}
+                    style={isOverride && cfg ? { borderLeft: `3px solid ${cfg.color}`, ringColor: cfg.color + '40' } : {}}
+                    onClick={() => setEditingDay(isEditing ? null : day)}
+                  >
+                    {/* Day name */}
+                    <span className="text-sm font-semibold text-gray-700 w-20 shrink-0">{DAY_LABELS[day]}</span>
+
+                    {/* Diet badge */}
+                    {cfg && (
+                      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium" style={{ backgroundColor: cfg.bg, color: cfg.color }}>
+                        {cfg.icon} {cfg.label}
+                      </span>
+                    )}
+
+                    {/* Source indicator */}
+                    <span className="flex-1" />
+                    {isOverride ? (
+                      <span className="text-[10px] font-semibold px-2 py-0.5 rounded-md bg-blue-50 text-blue-500">Personalizado</span>
+                    ) : (
+                      <span className="text-[10px] text-gray-300">= base</span>
+                    )}
+
+                    {/* Remove override button */}
+                    {isOverride && (
+                      <button
+                        onClick={e => { e.stopPropagation(); handleRemoveOverride(day) }}
+                        className="text-gray-300 hover:text-red-400 p-1 transition"
+                        title="Quitar personalización (volver a base)"
+                        disabled={isSaving}
+                      >
+                        <Trash2 size={13} />
+                      </button>
+                    )}
+
+                    <ChevronDown size={14} className={`text-gray-300 transition-transform ${isEditing ? 'rotate-180' : ''}`} />
+                  </div>
+
+                  {/* Inline editor */}
+                  {isEditing && (
+                    <div className="ml-4 mt-1 mb-2 p-3 rounded-xl bg-gray-50 border border-gray-100">
+                      <p className="text-[11px] text-gray-400 mb-2">Cambiar dieta del {DAY_LABELS[day].toLowerCase()}:</p>
+                      <div className="flex gap-2 flex-wrap">
+                        {dietas.map(d => {
+                          const dCfg = getDietConfig(d.slug)
+                          const isActive = dayData?.diet_type === d.slug
+                          const isBase = basePlan?.diet_type === d.slug && !isOverride
+                          return (
+                            <button
+                              key={d.slug}
+                              onClick={() => {
+                                if (isBase) return // ya es la base, no hacer nada
+                                if (d.slug === basePlan?.diet_type && isOverride) {
+                                  // Si elige la misma que la base, eliminar override
+                                  handleRemoveOverride(day)
+                                } else {
+                                  handleOverrideDay(day, d.slug)
+                                }
+                              }}
+                              disabled={isSaving || isBase}
+                              className={`inline-flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-medium transition-all border ${
+                                isActive
+                                  ? 'ring-2 ring-offset-1 shadow-sm'
+                                  : isBase
+                                    ? 'opacity-50 cursor-default'
+                                    : 'hover:shadow-sm hover:scale-[1.03]'
+                              }`}
+                              style={{
+                                backgroundColor: isActive ? dCfg.color + '18' : dCfg.bg,
+                                color: dCfg.color,
+                                borderColor: isActive ? dCfg.color : 'transparent',
+                                ringColor: isActive ? dCfg.color : undefined,
+                              }}
+                              title={isBase ? 'Es la dieta base actual' : d.nombre}
+                            >
+                              {dCfg.icon} {dCfg.label}
+                              {isBase && <span className="text-[9px] ml-0.5 opacity-60">(base)</span>}
+                            </button>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
     </div>
   )
 }

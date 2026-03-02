@@ -66,9 +66,11 @@ export default function PatientChat() {
         body: {
           messages: [...messages, savedUser].map(m => ({ role: m.role, content: m.content })),
           patient_context: {
+            patient_id: profile.id,
             name: profile.full_name,
             current_weight: profile.current_weight,
             target_weight: profile.target_weight,
+            initial_weight: profile.initial_weight,
           }
         }
       })

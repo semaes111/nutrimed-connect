@@ -455,6 +455,13 @@ function WeightTab({ patient }) {
   const latest = records.length > 0 ? Number(records[records.length - 1].weight) : null
   const totalChange = initial && latest ? (initial - latest).toFixed(1) : null
 
+  // Y-axis domain must include target + initial so reference lines are visible
+  const allValues = chartData.map(d => d.peso)
+  if (target) allValues.push(target)
+  if (initial) allValues.push(initial)
+  const yMin = allValues.length > 0 ? Math.floor(Math.min(...allValues) - 2) : 'auto'
+  const yMax = allValues.length > 0 ? Math.ceil(Math.max(...allValues) + 2) : 'auto'
+
   return (
     <div>
       <div className="flex items-center justify-between mb-4">
@@ -489,7 +496,7 @@ function WeightTab({ patient }) {
             <LineChart data={chartData} margin={{ top: 10, right: 20, left: -10, bottom: 5 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" />
               <XAxis dataKey="date" tick={{ fontSize: 11, fill: '#94A3B8' }} />
-              <YAxis tick={{ fontSize: 11, fill: '#94A3B8' }} domain={['dataMin - 2', 'dataMax + 2']} />
+              <YAxis tick={{ fontSize: 11, fill: '#94A3B8' }} domain={[yMin, yMax]} />
               <Tooltip contentStyle={{ borderRadius: 12, border: 'none', boxShadow: '0 4px 20px rgba(0,0,0,.1)', fontSize: 13 }} formatter={v => [`${v} kg`, 'Peso']} />
               <Line type="monotone" dataKey="peso" stroke="#0D9488" strokeWidth={2.5} dot={{ fill: '#0D9488', r: 3 }} activeDot={{ r: 5 }} />
               {target && <ReferenceLine y={target} stroke="#3B82F6" strokeDasharray="5 5" label={{ value: `Obj: ${target}`, position: 'right', fontSize: 10, fill: '#3B82F6' }} />}

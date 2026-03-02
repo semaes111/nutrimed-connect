@@ -61,6 +61,13 @@ export default function WeightTracker() {
   const totalLost = initial && latest ? (initial - latest).toFixed(1) : null
   const remaining = target && latest ? (latest - target).toFixed(1) : null
 
+  // Y-axis domain must include target + initial so reference lines are visible
+  const allValues = chartData.map(d => d.peso)
+  if (target) allValues.push(target)
+  if (initial) allValues.push(initial)
+  const yMin = allValues.length > 0 ? Math.floor(Math.min(...allValues) - 2) : 'auto'
+  const yMax = allValues.length > 0 ? Math.ceil(Math.max(...allValues) + 2) : 'auto'
+
   return (
     <PatientLayout
       title="Evolución de peso"
@@ -112,7 +119,7 @@ export default function WeightTracker() {
             <LineChart data={chartData} margin={{ top: 5, right: 10, left: -20, bottom: 5 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" />
               <XAxis dataKey="date" tick={{ fontSize: 10, fill: '#94A3B8' }} />
-              <YAxis tick={{ fontSize: 10, fill: '#94A3B8' }} domain={['dataMin - 2', 'dataMax + 2']} />
+              <YAxis tick={{ fontSize: 10, fill: '#94A3B8' }} domain={[yMin, yMax]} />
               <Tooltip
                 contentStyle={{ borderRadius: 12, border: 'none', boxShadow: '0 4px 20px rgba(0,0,0,0.1)', fontSize: 13 }}
                 formatter={(val) => [`${val} kg`, 'Peso']}

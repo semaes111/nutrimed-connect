@@ -24,78 +24,78 @@ const SECTION_STYLE = {
   'OPCIÓN E':             { badge: 'Opción E', bg: '#F5F3FF', border: '#DDD6FE', text: '#6D28D9' },
 }
 
-/** Parse structured meal text into visual sections */
+/** Parse structured meal text into visual sections — safe split-based parser */
 function MealContent({ text, compact = false }) {
   if (!text) return null
 
-  // Check if text has sections (═══)
-  if (!text.includes('═══')) {
-    return <p className={`${compact ? 'text-[12px]' : 'text-[13px]'} text-gray-700 leading-relaxed whitespace-pre-line`}>{text}</p>
-  }
-
-  // Split by section headers
-  const sections = []
-  const regex = /═══\s*(.+?)\s*═══/g
-  let lastIndex = 0
-  let match
-
-  while ((match = regex.exec(text)) !== null) {
-    // Content before this header (skip if empty)
-    const before = text.slice(lastIndex, match.index).trim()
-    if (before && sections.length === 0) {
-      sections.push({ title: null, content: before })
+  try {
+    // Check if text has section markers
+    if (!text.includes('═══')) {
+      return <p className={`${compact ? 'text-[12px]' : 'text-[13px]'} text-gray-700 leading-relaxed whitespace-pre-line`}>{text}</p>
     }
-    lastIndex = match.index + match[0].length
-    
-    // Find content until next header or end
-    const nextMatch = regex.exec(text)
-    const endIdx = nextMatch ? nextMatch.index : text.length
-    const content = text.slice(lastIndex, endIdx).trim()
-    
-    sections.push({ title: match[1].trim(), content })
-    
-    if (nextMatch) {
-      // Reset regex to process next match
-      regex.lastIndex = nextMatch.index
-    } else {
-      lastIndex = text.length
-    }
-  }
 
-  if (sections.length === 0) {
+    // Safe parsing: split by ═══ markers instead of fragile regex.exec() loop
+    const parts = text.split('═══')
+    const sections = []
+
+    for (let i = 0; i < parts.length; i++) {
+      const part = parts[i].trim()
+      if (!part) continue
+
+      // Check if next part is a section body (odd indices are titles, even are content after split)
+      // Pattern: content ═══ TITLE ═══ content ═══ TITLE ═══ content
+      // After split: ["content", " TITLE ", " content ", " TITLE ", " content"]
+      // Odd-indexed parts (1, 3, 5...) are titles
+      if (i % 2 === 1) {
+        // This is a title — get its content from the next part
+        const title = part.trim()
+        const content = (i + 1 < parts.length) ? parts[i + 1].trim() : ''
+        sections.push({ title, content })
+      } else if (i === 0 && part) {
+        // Content before first header
+        sections.push({ title: null, content: part })
+      }
+    }
+
+    if (sections.length === 0) {
+      return <p className="text-[13px] text-gray-700 leading-relaxed whitespace-pre-line">{text}</p>
+    }
+
+    return (
+      <div className={`space-y-2 ${compact ? 'text-[11px]' : 'text-[12px]'}`}>
+        {sections.map((s, i) => {
+          const style = s.title ? SECTION_STYLE[s.title] : null
+
+          if (!style) {
+            return s.content ? <p key={i} className="text-gray-600 leading-relaxed whitespace-pre-line">{s.content}</p> : null
+          }
+
+          return (
+            <div key={i} className="rounded-lg overflow-hidden" style={{ background: style.bg, border: `1px solid ${style.border}` }}>
+              <div className="px-2.5 py-1" style={{ borderBottom: `1px solid ${style.border}` }}>
+                <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: style.text }}>
+                  {style.badge}
+                </span>
+              </div>
+              <div className="px-2.5 py-2">
+                <p className="text-gray-700 leading-relaxed whitespace-pre-line">{s.content}</p>
+              </div>
+            </div>
+          )
+        })}
+      </div>
+    )
+  } catch (err) {
+    // Fallback: render raw text if parsing fails
     return <p className="text-[13px] text-gray-700 leading-relaxed whitespace-pre-line">{text}</p>
   }
-
-  return (
-    <div className={`space-y-2 ${compact ? 'text-[11px]' : 'text-[12px]'}`}>
-      {sections.map((s, i) => {
-        const style = s.title ? SECTION_STYLE[s.title] : null
-        
-        if (!style) {
-          return <p key={i} className="text-gray-600 leading-relaxed whitespace-pre-line">{s.content}</p>
-        }
-
-        return (
-          <div key={i} className="rounded-lg overflow-hidden" style={{ background: style.bg, border: `1px solid ${style.border}` }}>
-            <div className="px-2.5 py-1" style={{ borderBottom: `1px solid ${style.border}` }}>
-              <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: style.text }}>
-                {style.badge}
-              </span>
-            </div>
-            <div className="px-2.5 py-2">
-              <p className="text-gray-700 leading-relaxed whitespace-pre-line">{s.content}</p>
-            </div>
-          </div>
-        )
-      })}
-    </div>
-  )
 }
 
 export default function PatientDashboard() {
   const { profile } = useAuth()
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(null)
   const [expandedDay, setExpandedDay] = useState(null)
 
   useEffect(() => {
@@ -104,41 +104,67 @@ export default function PatientDashboard() {
   }, [profile?.id])
 
   async function loadDashboard() {
-    setLoading(true)
-    const pid = profile.id
-    const [plansRes, weightsRes, medsRes, mealsRes] = await Promise.all([
-      supabase.from('nm_diet_plans').select('*').eq('patient_id', pid).eq('is_active', true),
-      supabase.from('nm_weight_records').select('*').eq('patient_id', pid).order('date', { ascending: false }).limit(10),
-      supabase.from('nm_medications').select('*').eq('patient_id', pid).eq('is_active', true),
-      supabase.from('nm_daily_meals').select('*').eq('patient_id', pid).eq('is_active', true),
-    ])
+    try {
+      setLoading(true)
+      setError(null)
+      const pid = profile.id
+      const [plansRes, weightsRes, medsRes, mealsRes] = await Promise.all([
+        supabase.from('nm_diet_plans').select('*').eq('patient_id', pid).eq('is_active', true),
+        supabase.from('nm_weight_records').select('*').eq('patient_id', pid).order('date', { ascending: false }).limit(10),
+        supabase.from('nm_medications').select('*').eq('patient_id', pid).eq('is_active', true),
+        supabase.from('nm_daily_meals').select('*').eq('patient_id', pid).eq('is_active', true),
+      ])
 
-    const mealsMap = {}
-    ;(mealsRes.data || []).forEach(m => { mealsMap[m.day_of_week] = m })
+      // Check for query errors
+      const queryError = plansRes.error || weightsRes.error || medsRes.error || mealsRes.error
+      if (queryError) {
+        console.error('[Dashboard] Query error:', queryError)
+        setError('Error al cargar los datos. Intenta de nuevo.')
+        setLoading(false)
+        return
+      }
 
-    setData({
-      plans: plansRes.data || [],
-      weights: weightsRes.data || [],
-      meds: medsRes.data || [],
-      meals: mealsMap,
-    })
-    setLoading(false)
+      const mealsMap = {}
+      ;(mealsRes.data || []).forEach(m => { mealsMap[m.day_of_week] = m })
+
+      setData({
+        plans: plansRes.data || [],
+        weights: weightsRes.data || [],
+        meds: medsRes.data || [],
+        meals: mealsMap,
+      })
+    } catch (err) {
+      console.error('[Dashboard] loadDashboard error:', err)
+      setError('Error inesperado. Intenta recargar la página.')
+    } finally {
+      setLoading(false)
+    }
   }
 
   if (loading || !data) {
+    if (error) {
+      return (
+        <PatientLayout>
+          <div className="flex flex-col items-center justify-center py-20">
+            <p className="text-sm text-red-500 mb-4">{error}</p>
+            <button onClick={loadDashboard} className="btn btn-primary btn-sm">Reintentar</button>
+          </div>
+        </PatientLayout>
+      )
+    }
     return <PatientLayout><div className="flex justify-center py-20"><div className="loader" /></div></PatientLayout>
   }
 
   const today = getTodaySlug()
-  const todayPlan = data.plans.find(p => p.day_of_week === today) || data.plans.find(p => p.day_of_week === 'todos')
+  const todayPlan = data.plans.find(p => p.day_of_week === today) || data.plans.find(p => p.day_of_week === 'todos') || null
   const todayDiet = todayPlan ? getDietConfig(todayPlan.diet_type) : null
-  const todayMeals = data.meals[today]
+  const todayMeals = data.meals[today] || null
 
-  const lastWeight = data.weights[0]
-  const prevWeight = data.weights[1]
-  const weightChange = lastWeight && prevWeight ? (Number(lastWeight.weight) - Number(prevWeight.weight)).toFixed(1) : null
-  const totalChange = lastWeight && profile.initial_weight ? (Number(lastWeight.weight) - Number(profile.initial_weight)).toFixed(1) : null
-  const daysLeft = getDaysRemaining(profile.code_expiry)
+  const lastWeight = data.weights[0] || null
+  const prevWeight = data.weights[1] || null
+  const weightChange = (lastWeight && prevWeight) ? (Number(lastWeight.weight || 0) - Number(prevWeight.weight || 0)).toFixed(1) : null
+  const totalChange = (lastWeight && profile?.initial_weight) ? (Number(lastWeight.weight || 0) - Number(profile.initial_weight)).toFixed(1) : null
+  const daysLeft = getDaysRemaining(profile?.code_expiry)
 
   const hasTodayMeals = todayMeals && (todayMeals.breakfast || todayMeals.lunch || todayMeals.dinner)
 
@@ -336,6 +362,7 @@ export default function PatientDashboard() {
 }
 
 function MealDots({ meals }) {
+  if (!meals) return null
   const dots = [
     { key: 'breakfast', color: MEAL_CONFIG.breakfast.color, filled: !!meals.breakfast },
     { key: 'lunch', color: MEAL_CONFIG.lunch.color, filled: !!meals.lunch },

@@ -3,6 +3,17 @@ import { supabase } from './supabase'
 
 const AuthContext = createContext(null)
 
+// Safe localStorage wrapper — Safari private mode and restrictive iOS configs can throw
+function safeGetItem(key) {
+  try { return localStorage.getItem(key) } catch { return null }
+}
+function safeSetItem(key, value) {
+  try { localStorage.setItem(key, value) } catch { /* ignore */ }
+}
+function safeRemoveItem(key) {
+  try { localStorage.removeItem(key) } catch { /* ignore */ }
+}
+
 export function AuthProvider({ children }) {
   const [session, setSession] = useState(null)
   const [role, setRole] = useState(null) // 'professional' | 'patient' | null
@@ -11,54 +22,58 @@ export function AuthProvider({ children }) {
 
   // Resolve role + profile from session
   const resolveUser = useCallback(async (sess) => {
-    // Check patient session in localStorage FIRST (patients don't use Supabase Auth)
-    const patientSession = localStorage.getItem('nm_patient_session')
-    if (patientSession) {
-      try {
-        const ps = JSON.parse(patientSession)
-        if (ps.patient_id && new Date(ps.expires_at) > new Date()) {
-          const { data: patient } = await supabase
-            .from('nm_patients')
-            .select('*')
-            .eq('id', ps.patient_id)
-            .maybeSingle()
-          if (patient && !patient.is_blocked) {
-            setRole('patient')
-            setProfile(patient)
-            setLoading(false)
-            return
+    try {
+      // Check patient session in localStorage FIRST (patients don't use Supabase Auth)
+      const patientSession = safeGetItem('nm_patient_session')
+      if (patientSession) {
+        try {
+          const ps = JSON.parse(patientSession)
+          if (ps.patient_id && new Date(ps.expires_at) > new Date()) {
+            const { data: patient } = await supabase
+              .from('nm_patients')
+              .select('*')
+              .eq('id', ps.patient_id)
+              .maybeSingle()
+            if (patient && !patient.is_blocked) {
+              setRole('patient')
+              setProfile(patient)
+              return
+            }
           }
-        }
-        localStorage.removeItem('nm_patient_session')
-      } catch { /* ignore */ }
-    }
+          safeRemoveItem('nm_patient_session')
+        } catch { /* ignore parse error */ }
+      }
 
-    // No patient session — check Supabase Auth for professionals
-    if (!sess?.user) {
+      // No patient session — check Supabase Auth for professionals
+      if (!sess?.user) {
+        setRole(null)
+        setProfile(null)
+        return
+      }
+      const userId = sess.user.id
+
+      const { data: pro } = await supabase
+        .from('nm_professionals')
+        .select('*')
+        .eq('auth_user_id', userId)
+        .eq('is_active', true)
+        .maybeSingle()
+
+      if (pro) {
+        setRole('professional')
+        setProfile(pro)
+        return
+      }
+
       setRole(null)
       setProfile(null)
+    } catch (err) {
+      console.error('[AuthContext] resolveUser error:', err)
+      setRole(null)
+      setProfile(null)
+    } finally {
       setLoading(false)
-      return
     }
-    const userId = sess.user.id
-
-    const { data: pro } = await supabase
-      .from('nm_professionals')
-      .select('*')
-      .eq('auth_user_id', userId)
-      .eq('is_active', true)
-      .maybeSingle()
-
-    if (pro) {
-      setRole('professional')
-      setProfile(pro)
-      setLoading(false)
-      return
-    }
-
-    setRole(null)
-    setProfile(null)
-    setLoading(false)
   }, [])
 
   useEffect(() => {
@@ -102,14 +117,14 @@ export function AuthProvider({ children }) {
       expires_at: ac.code_expiry,
       logged_at: new Date().toISOString()
     }
-    localStorage.setItem('nm_patient_session', JSON.stringify(patientSession))
+    safeSetItem('nm_patient_session', JSON.stringify(patientSession))
     setRole('patient')
     setProfile(ac.patient)
     return ac.patient
   }
 
   const logout = async () => {
-    localStorage.removeItem('nm_patient_session')
+    safeRemoveItem('nm_patient_session')
     await supabase.auth.signOut()
     setSession(null)
     setRole(null)

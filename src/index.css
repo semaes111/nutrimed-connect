@@ -26,10 +26,10 @@
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 
 html { font-family: var(--font-body); background: var(--color-surface); color: #1E293B; }
-body { margin: 0; min-height: 100dvh; }
+body { margin: 0; min-height: 100vh; min-height: 100dvh; }
 
 /* App shell */
-.app-shell { max-width: 430px; margin: 0 auto; min-height: 100dvh; background: white; position: relative; }
+.app-shell { max-width: 430px; margin: 0 auto; min-height: 100vh; min-height: 100dvh; background: white; position: relative; }
 .app-shell--pro { max-width: 1200px; background: var(--color-surface-alt); }
 
 /* Cards */

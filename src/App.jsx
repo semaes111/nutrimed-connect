@@ -1,6 +1,7 @@
 import { Routes, Route, Navigate } from 'react-router-dom'
 import { Component } from 'react'
 import { useAuth } from './lib/AuthContext'
+import { ThemeProvider } from './lib/ThemeContext'
 
 // Auth pages
 import PatientLogin from './pages/auth/PatientLogin'
@@ -78,6 +79,7 @@ export default function App() {
   }
 
   return (
+    <ThemeProvider>
     <ErrorBoundary>
       <Routes>
         {/* Auth */}
@@ -101,5 +103,6 @@ export default function App() {
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </ErrorBoundary>
+    </ThemeProvider>
   )
 }

@@ -26,15 +26,15 @@ export default function PatientLogin() {
   }
 
   return (
-    <div className="app-shell flex flex-col items-center justify-center min-h-screen px-6" style={{ background: 'linear-gradient(160deg, #F0FDFA 0%, #FFFFFF 50%, #F8FAFC 100%)' }}>
+    <div className="app-shell flex flex-col items-center justify-center min-h-screen px-6" style={{ background: 'linear-gradient(160deg, #F7FAF9 0%, #FFFFFF 40%, #F0F7F6 70%, #E8F5F3 100%)' }}>
       <div className="w-full max-w-sm">
         {/* Logo */}
         <div className="text-center mb-10">
-          <div className="w-16 h-16 rounded-2xl bg-[var(--color-brand)] flex items-center justify-center mx-auto mb-4 shadow-lg shadow-teal-200/50">
-            <Stethoscope size={28} className="text-white" />
+          <div className="w-18 h-18 rounded-[22px] flex items-center justify-center mx-auto mb-5" style={{ width: 72, height: 72, background: 'linear-gradient(135deg, #0D9488 0%, #0F766E 100%)', boxShadow: '0 8px 32px rgba(13,148,136,0.3), 0 2px 8px rgba(13,148,136,0.2), inset 0 1px 0 rgba(255,255,255,0.2)' }}>
+            <Stethoscope size={30} className="text-white" style={{ filter: 'drop-shadow(0 1px 2px rgba(0,0,0,0.1))' }} />
           </div>
-          <h1 className="text-2xl font-bold text-gray-900" style={{ fontFamily: 'var(--font-display)' }}>NutriMed Connect</h1>
-          <p className="text-sm text-gray-400 mt-1">Tu seguimiento nutricional</p>
+          <h1 className="text-[26px] font-bold text-gray-900" style={{ fontFamily: 'var(--font-display)', letterSpacing: '-0.03em' }}>NutriMed Connect</h1>
+          <p className="text-[13px] text-teal-600/50 mt-1.5 font-medium tracking-wide">Tu seguimiento nutricional</p>
         </div>
 
         {/* Form */}

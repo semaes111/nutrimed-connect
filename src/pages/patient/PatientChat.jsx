@@ -102,9 +102,9 @@ export default function PatientChat() {
   return (
     <PatientLayout title="Chat nutricional" subtitle="Asistente IA">
       {/* Disclaimer */}
-      <div className="flex items-start gap-2 p-3 rounded-xl bg-teal-50 border border-teal-100 mb-4">
-        <Sparkles size={14} className="text-teal-500 mt-0.5 shrink-0" />
-        <p className="text-[11px] text-teal-700">
+      <div className="flex items-start gap-2.5 p-3.5 rounded-2xl mb-4" style={{ background: 'linear-gradient(135deg, #F0FDFA 0%, #E8F8F5 100%)', border: '1px solid rgba(13,148,136,0.08)' }}>
+        <Sparkles size={13} className="text-teal-500 mt-0.5 shrink-0" style={{ filter: 'drop-shadow(0 1px 2px rgba(13,148,136,0.2))' }} />
+        <p className="text-[11px] text-teal-700/70 leading-relaxed">
           Asistente nutricional orientativo. No sustituye la consulta profesional. Para urgencias o ajuste de medicación, contacta directamente con tu profesional.
         </p>
       </div>
@@ -112,29 +112,35 @@ export default function PatientChat() {
       {/* Messages */}
       <div className="space-y-3 mb-4" style={{ minHeight: 200 }}>
         {messages.length === 0 && !loading && (
-          <div className="text-center py-10">
-            <Bot size={32} className="mx-auto text-gray-200 mb-3" />
-            <p className="text-sm text-gray-400">Pregúntame sobre tu dieta, recetas o nutrición</p>
+          <div className="text-center py-12">
+            <div className="w-14 h-14 rounded-2xl mx-auto mb-4 flex items-center justify-center" style={{ background: 'linear-gradient(135deg, #F0FDFA 0%, #E0F2F1 100%)', boxShadow: '0 2px 12px rgba(13,148,136,0.08)' }}>
+              <Bot size={24} className="text-teal-400" />
+            </div>
+            <p className="text-sm text-gray-400 font-medium">Pregúntame sobre tu dieta, recetas o nutrición</p>
+            <p className="text-[11px] text-gray-300 mt-1">Estoy aquí para ayudarte</p>
           </div>
         )}
 
         {messages.map(msg => (
           <div key={msg.id} className={`flex gap-2.5 ${msg.role === 'user' ? 'justify-end' : ''}`}>
             {msg.role === 'assistant' && (
-              <div className="w-7 h-7 rounded-full bg-teal-50 flex items-center justify-center shrink-0 mt-1">
-                <Bot size={14} className="text-teal-500" />
+              <div className="w-7 h-7 rounded-full flex items-center justify-center shrink-0 mt-1" style={{ background: 'linear-gradient(135deg, #E0F2F1 0%, #B2DFDB 100%)', boxShadow: '0 1px 4px rgba(13,148,136,0.12)' }}>
+                <Bot size={13} className="text-teal-600" />
               </div>
             )}
             <div className={`max-w-[80%] rounded-2xl px-3.5 py-2.5 text-sm leading-relaxed ${
               msg.role === 'user'
-                ? 'bg-[var(--color-brand)] text-white rounded-br-md'
-                : 'bg-gray-100 text-gray-800 rounded-bl-md'
-            }`}>
+                ? 'text-white rounded-br-md'
+                : 'bg-white text-gray-800 rounded-bl-md'
+            }`} style={msg.role === 'user'
+              ? { background: 'linear-gradient(135deg, #0D9488 0%, #0F766E 100%)', boxShadow: '0 2px 8px rgba(13,148,136,0.2)' }
+              : { boxShadow: '0 1px 6px rgba(0,0,0,0.04)', border: '1px solid rgba(13,148,136,0.05)' }
+            }>
               {msg.content}
             </div>
             {msg.role === 'user' && (
-              <div className="w-7 h-7 rounded-full bg-gray-100 flex items-center justify-center shrink-0 mt-1">
-                <User size={14} className="text-gray-400" />
+              <div className="w-7 h-7 rounded-full bg-gray-100 flex items-center justify-center shrink-0 mt-1" style={{ boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
+                <User size={13} className="text-gray-400" />
               </div>
             )}
           </div>
@@ -142,14 +148,14 @@ export default function PatientChat() {
 
         {loading && (
           <div className="flex gap-2.5">
-            <div className="w-7 h-7 rounded-full bg-teal-50 flex items-center justify-center shrink-0">
-              <Bot size={14} className="text-teal-500" />
+            <div className="w-7 h-7 rounded-full flex items-center justify-center shrink-0" style={{ background: 'linear-gradient(135deg, #E0F2F1 0%, #B2DFDB 100%)' }}>
+              <Bot size={13} className="text-teal-600" />
             </div>
-            <div className="bg-gray-100 rounded-2xl rounded-bl-md px-4 py-3">
-              <div className="flex gap-1">
-                <span className="w-2 h-2 bg-gray-300 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-                <span className="w-2 h-2 bg-gray-300 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
-                <span className="w-2 h-2 bg-gray-300 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+            <div className="bg-white rounded-2xl rounded-bl-md px-4 py-3" style={{ boxShadow: '0 1px 6px rgba(0,0,0,0.04)', border: '1px solid rgba(13,148,136,0.05)' }}>
+              <div className="flex gap-1.5">
+                <span className="w-1.5 h-1.5 bg-teal-300 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                <span className="w-1.5 h-1.5 bg-teal-300 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                <span className="w-1.5 h-1.5 bg-teal-300 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
               </div>
             </div>
           </div>
@@ -158,7 +164,7 @@ export default function PatientChat() {
       </div>
 
       {/* Input */}
-      <div className="sticky bottom-16 bg-white pb-2 pt-2 border-t border-gray-100 -mx-4 px-4">
+      <div className="sticky bottom-16 pb-2 pt-2 -mx-4 px-4" style={{ background: 'rgba(255,255,255,0.85)', backdropFilter: 'blur(16px)', borderTop: '1px solid rgba(13,148,136,0.05)' }}>
         <form onSubmit={handleSend} className="flex gap-2">
           <input
             ref={inputRef}
@@ -168,6 +174,7 @@ export default function PatientChat() {
             value={input}
             onChange={e => setInput(e.target.value)}
             disabled={loading}
+            style={{ background: '#F7FAF9', border: '1.5px solid rgba(13,148,136,0.1)' }}
           />
           <button type="submit" disabled={loading || !input.trim()} className="btn btn-primary !rounded-full !p-3">
             <Send size={16} />

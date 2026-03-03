@@ -1,122 +1,49 @@
-# NutriMed Connect — Project Status & Deployment Guide
+# NutriMed Connect — Project Status
 
-## Build Status: ✅ COMPLETE — Production Ready
+## Stack
+- **Frontend**: Vite + React 18 + Tailwind CSS + Lucide React
+- **Backend**: Supabase (PostgreSQL, Auth, Edge Functions, RLS)
+- **AI Chatbot**: Claude Haiku 3 (classify) + Claude Sonnet 4.5 (format)
+- **Deployment**: Docker + nginx → Dokploy/VPS
 
-**Repo:** https://github.com/semaes111/nutrimed-connect (private)
-**Branch:** `main`
-**Build:** Vite 7.3.1 · 2,425 modules · 237KB gzipped total · 25s build
+## Database: 15 tables (nm_ prefix)
+| Table | Records | Purpose |
+|-------|---------|---------|
+| nm_professionals | 1+ | Doctors/nutritionists |
+| nm_patients | 1+ | Patient clinical data |
+| nm_access_codes | Per patient | Temporary login codes |
+| nm_diet_catalog | 8+ | Diet type definitions |
+| nm_diet_plans | Per patient/day | Weekly diet assignments |
+| nm_daily_meals | Per patient/day | Meal schedule |
+| nm_food_knowledge | 120+ | Allowed foods per diet |
+| nm_meal_catalog | 80+ | Lunch/dinner options |
+| nm_breakfast_catalog | 4+ | Breakfast templates |
+| nm_snack_catalog | 3+ | Snack options |
+| nm_recipes | Variable | Recipe library |
+| nm_medications | Per patient | Active prescriptions |
+| nm_weight_records | Per patient | Weight tracking history |
+| nm_chat_conversations | Per patient | Chat sessions |
+| nm_chat_messages | Per conversation | Chat messages + AI metadata |
 
----
+## Edge Functions
+| Function | Version | Architecture |
+|----------|---------|-------------|
+| nm-chat | v11 | Haiku classify → RAG → Sonnet format |
 
-## Architecture
+### nm-chat Architecture (3-phase hybrid)
+1. **Phase 1 — CLASSIFY** (Haiku 3, ~400ms, $0.0003/msg): Intent classification into 11 categories
+2. **Phase 2 — RAG** (Supabase queries, ~300-600ms, $0): Fetch relevant data based on intent
+3. **Phase 3 — FORMAT** (Sonnet 4.5, ~2-3s, $0.0035/msg): Generate natural response
 
-```
-React 18 + Vite 7 + Tailwind v4
-         │
-         ▼
-┌─────────────────────────────────────┐
-│  Supabase (bpazmmbjjducdmxgfoum)   │
-│  ├─ 9 nm_* tables                  │
-│  ├─ RLS enabled all tables         │
-│  ├─ Edge Functions (nm-chat)       │
-│  └─ Auth (email + anonymous)       │
-└─────────────────────────────────────┘
-         │
-         ▼
-  Docker (nginx:alpine ~30MB)
-         │
-         ▼
-  Dokploy → Traefik → nutrimedia.es
-  VPS 31.97.69.100 (Hostinger)
-```
+**Cost per message**: ~$0.004 | **200 msgs/day**: ~$24/month
 
-## 17 Source Files (2,571 total lines)
+### Supported intents
+alimento_permitido, alimento_alternativa, dieta_info, comida_sugerencia,
+horario_comidas, receta_consulta, medicacion, peso_progreso, saludo, despedida, otro
 
-```
-src/
-├── App.jsx                              (70 lines)  Router + auth guards
-├── main.jsx                             (16 lines)  Entry point
-├── index.css                            (75 lines)  Design system + components
-├── lib/
-│   ├── supabase.js                      (57 lines)  Client + service factory
-│   ├── AuthContext.jsx                  (130 lines)  Dual auth (pro + patient)
-│   └── dietConfig.js                    (46 lines)  9 diets visual config
-├── components/layout/
-│   ├── PatientLayout.jsx                (54 lines)  Mobile bottom nav
-│   └── ProLayout.jsx                    (66 lines)  Desktop sidebar
-├── pages/auth/
-│   ├── PatientLogin.jsx                 (83 lines)  Access code entry
-│   └── ProLogin.jsx                     (63 lines)  Email/password
-├── pages/patient/
-│   ├── PatientDashboard.jsx            (159 lines)  Diet card + stats + meds
-│   ├── WeightTracker.jsx               (152 lines)  Weight entry + Recharts graph
-│   ├── MedsView.jsx                    (130 lines)  Medication list + details
-│   └── PatientChat.jsx                 (187 lines)  AI chat interface
-└── pages/pro/
-    ├── ProDashboard.jsx                (182 lines)  Patient list + search/filter
-    ├── ProPatientDetail.jsx            (656 lines)  5-tab CRUD (general/diet/weight/meds/access)
-    └── ProPatientForm.jsx              (445 lines)  Create/edit patient form
-```
+## Deployment
+- **Supabase**: bpazmmbjjducdmxgfoum.supabase.co
+- **VPS**: 31.97.69.100 (Hostinger)
+- **Secrets required**: ANTHROPIC_API_KEY (in Supabase Edge Function secrets)
 
-## Production Bundle (code-split)
-
-| Chunk      | Raw     | Gzipped  | Contents               |
-|------------|---------|----------|------------------------|
-| index.js   | 86 KB   | 22 KB    | App code (all pages)   |
-| vendor.js  | 178 KB  | 59 KB    | React + Router         |
-| charts.js  | 346 KB  | 103 KB   | Recharts               |
-| supabase.js| 172 KB  | 46 KB    | Supabase client        |
-| index.css  | 32 KB   | 7 KB     | Tailwind + design      |
-| **Total**  | **815 KB** | **237 KB** |                    |
-
-## Deployment to Dokploy (nutrimedia.es)
-
-### Step 1: DNS (at registrar)
-```
-A    @      → 31.97.69.100
-CNAME www   → nutrimedia.es
-```
-
-### Step 2: Dokploy Setup
-1. Access http://31.97.69.100:3000 (Dokploy panel)
-2. Create Project → "NutriMed Connect"
-3. Create Application → Source: GitHub → semaes111/nutrimed-connect → branch: main
-4. Build Type: **Dockerfile** (path: `./Dockerfile`)
-5. Environment Variables tab → Add:
-   ```
-   VITE_SUPABASE_URL=https://bpazmmbjjducdmxgfoum.supabase.co
-   VITE_SUPABASE_ANON_KEY=eyJhbGci...h07Kw
-   ```
-6. Domains tab → Create:
-   - Host: `nutrimedia.es`
-   - Container Port: `80`
-   - HTTPS: On
-   - Certificate: Let's Encrypt
-7. Click **Deploy** → monitor build logs
-
-### Step 3: Verify
-- https://nutrimedia.es → should load patient login
-- https://nutrimedia.es/pro/login → professional login
-- https://nutrimedia.es/health → "OK"
-
-## Supabase Tables (9 nm_* tables)
-
-| Table              | Purpose                        |
-|--------------------|--------------------------------|
-| nm_patients        | Patient records (28 fields)    |
-| nm_dietas_validas  | Diet catalog (9 active diets)  |
-| nm_patient_diets   | Diet plan per day of week      |
-| nm_weights         | Daily weight records           |
-| nm_medications     | Active medications             |
-| nm_access_codes    | Patient login codes (28-day)   |
-| nm_conversations   | Chat sessions                  |
-| nm_messages        | Chat messages                  |
-| nm_api_usage       | AI usage tracking              |
-
-## What's Next (Pending)
-
-1. **Supabase Edge Function `nm-chat`** — AI chat backend (Claude/Gemini)
-2. **PWA setup** — vite-plugin-pwa for installable mobile experience
-3. **Push notifications** — medication reminders
-4. **Professional auth** — create first pro user in Supabase Auth dashboard
-5. **Test data** — seed patients, diets, weights for demo
+## Last updated: 2026-03-03

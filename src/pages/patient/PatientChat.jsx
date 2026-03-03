@@ -93,12 +93,16 @@ export default function PatientChat() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${SERVICE_KEY}` },
         body: JSON.stringify({
-          messages: [...messages, userMsg].map(m => ({ role: m.role, content: m.content })),
+          // La Edge Function espera `message` (string del último turno)
+          // más el historial previo como `conversation_history`
+          message: text,
           patient_id: profile.id,
+          conversation_history: messages.map(m => ({ role: m.role, content: m.content })),
         }),
       })
       const data = await res.json()
-      const reply = data?.content?.[0]?.text || data?.reply || 'Sin respuesta del asistente.'
+      // La función devuelve: { content: string, message: string, response: string }
+      const reply = data?.content || data?.message || data?.response || 'Sin respuesta del asistente.'
       const assistantMsg = { id: Date.now() + 1, role: 'assistant', content: reply }
       setMessages(prev => [...prev, assistantMsg])
       if (convId) {

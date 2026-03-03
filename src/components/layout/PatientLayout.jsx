@@ -7,18 +7,28 @@ export default function PatientLayout({ children, title, subtitle, rightAction }
 
   return (
     <div className="app-shell pb-20">
-      {/* Header */}
-      <header className="sticky top-0 z-40 bg-white/80 backdrop-blur-xl border-b border-teal-900/5 px-4 py-3.5" style={{ backdropFilter: 'blur(24px) saturate(1.6)' }}>
+      {/* Header — frosted dark glass with metallic border */}
+      <header className="sticky top-0 z-40 px-4 py-3.5"
+        style={{
+          background: 'rgba(26,29,35,0.82)',
+          backdropFilter: 'blur(24px) saturate(1.6)',
+          WebkitBackdropFilter: 'blur(24px) saturate(1.6)',
+          borderBottom: '1px solid rgba(255,255,255,0.04)',
+          boxShadow: '0 4px 24px rgba(0,0,0,0.2), inset 0 -1px 0 rgba(255,255,255,0.03)'
+        }}>
         <div className="flex items-center justify-between">
           <div className="min-w-0">
-            {subtitle && <p className="text-[10px] text-teal-600/60 font-semibold tracking-[0.12em] uppercase mb-0.5">{subtitle}</p>}
-            <h1 className="text-[19px] font-bold text-gray-900 truncate" style={{ fontFamily: 'var(--font-display)', letterSpacing: '-0.02em' }}>
+            {subtitle && <p className="text-[10px] font-bold tracking-[0.14em] uppercase mb-0.5" style={{ color: '#2DD4BF' }}>{subtitle}</p>}
+            <h1 className="text-[19px] font-bold truncate" style={{ fontFamily: 'var(--font-display)', letterSpacing: '-0.02em', color: '#F1F5F9' }}>
               {title || `Hola, ${profile?.full_name?.split(' ')[0] || 'Paciente'}`}
             </h1>
           </div>
           <div className="flex items-center gap-2">
             {rightAction}
-            <button onClick={logout} className="p-2.5 rounded-xl hover:bg-teal-50 text-gray-400 hover:text-teal-600 transition-all duration-200" title="Cerrar sesión">
+            <button onClick={logout} className="p-2.5 rounded-xl transition-all duration-200" title="Cerrar sesión"
+              style={{ color: '#4A5568' }}
+              onMouseEnter={e => { e.currentTarget.style.background = 'rgba(45,212,191,0.08)'; e.currentTarget.style.color = '#2DD4BF' }}
+              onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = '#4A5568' }}>
               <LogOut size={17} />
             </button>
           </div>

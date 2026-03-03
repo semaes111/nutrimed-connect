@@ -34,9 +34,9 @@ const INITIAL_STATE = {
 
 function SliderField({ label, icon: Icon, value, onChange, color, description }) {
   const colorMap = {
-    red: { track: 'bg-red-500', bg: 'bg-red-50', text: 'text-red-600' },
-    amber: { track: 'bg-amber-500', bg: 'bg-amber-50', text: 'text-amber-600' },
-    emerald: { track: 'bg-emerald-500', bg: 'bg-emerald-50', text: 'text-emerald-600' },
+    red: { track: 'bg-[rgba(248,113,113,0.06)]0', bg: 'bg-[rgba(248,113,113,0.06)]', text: 'text-[#FCA5A5]' },
+    amber: { track: 'bg-[rgba(251,191,36,0.04)]0', bg: 'bg-[rgba(251,191,36,0.04)]', text: 'text-[#E9A820]' },
+    emerald: { track: 'bg-[rgba(52,211,153,0.06)]0', bg: 'bg-[rgba(52,211,153,0.06)]', text: 'text-[#34D399]' },
   }
   const c = colorMap[color] || colorMap.emerald
   const levelLabel = value <= 3 ? 'Bajo' : value <= 6 ? 'Medio' : 'Alto'
@@ -44,20 +44,20 @@ function SliderField({ label, icon: Icon, value, onChange, color, description })
   return (
     <div className="space-y-2">
       <div className="flex items-center justify-between">
-        <label className="text-sm font-medium text-gray-700 flex items-center gap-2">
-          <Icon size={15} className="text-gray-400" />
+        <label className="text-sm font-medium text-[#CBD5E1] flex items-center gap-2">
+          <Icon size={15} className="text-[#4A5568]" />
           {label}
         </label>
         <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${c.bg} ${c.text}`}>
           {value}/10 — {levelLabel}
         </span>
       </div>
-      {description && <p className="text-xs text-gray-400">{description}</p>}
+      {description && <p className="text-xs text-[#4A5568]">{description}</p>}
       <input
         type="range" min="0" max="10" value={value} onChange={e => onChange(parseInt(e.target.value))}
-        className="w-full h-2 bg-gray-100 rounded-full appearance-none cursor-pointer accent-[var(--color-brand)]"
+        className="w-full h-2 bg-[#252A33] rounded-full appearance-none cursor-pointer accent-[var(--color-brand)]"
       />
-      <div className="flex justify-between text-[10px] text-gray-300">
+      <div className="flex justify-between text-[10px] text-[#333A45]">
         <span>0</span><span>5</span><span>10</span>
       </div>
     </div>
@@ -67,12 +67,12 @@ function SliderField({ label, icon: Icon, value, onChange, color, description })
 function SectionHeader({ icon: Icon, title, subtitle }) {
   return (
     <div className="flex items-center gap-3 mb-4 pt-2">
-      <div className="w-9 h-9 rounded-xl bg-teal-50 flex items-center justify-center">
+      <div className="w-9 h-9 rounded-xl bg-[rgba(45,212,191,0.08)] flex items-center justify-center">
         <Icon size={17} className="text-[var(--color-brand)]" />
       </div>
       <div>
-        <h3 className="font-semibold text-gray-900 text-sm">{title}</h3>
-        {subtitle && <p className="text-xs text-gray-400">{subtitle}</p>}
+        <h3 className="font-semibold text-[#F1F5F9] text-sm">{title}</h3>
+        {subtitle && <p className="text-xs text-[#4A5568]">{subtitle}</p>}
       </div>
     </div>
   )
@@ -81,12 +81,12 @@ function SectionHeader({ icon: Icon, title, subtitle }) {
 function InputField({ label, icon: Icon, type = 'text', value, onChange, placeholder, required, suffix, className = '' }) {
   return (
     <div className={className}>
-      <label className="block text-xs font-medium text-gray-500 mb-1.5">
+      <label className="block text-xs font-medium text-[#64748B] mb-1.5">
         {label} {required && <span className="text-red-400">*</span>}
       </label>
       <div className="relative">
         {Icon && (
-          <div className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-300">
+          <div className="absolute left-3 top-1/2 -translate-y-1/2 text-[#333A45]">
             <Icon size={15} />
           </div>
         )}
@@ -101,7 +101,7 @@ function InputField({ label, icon: Icon, type = 'text', value, onChange, placeho
           min={type === 'number' ? '0' : undefined}
         />
         {suffix && (
-          <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-400 font-medium">
+          <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-[#4A5568] font-medium">
             {suffix}
           </span>
         )}
@@ -114,12 +114,12 @@ function Toggle({ label, checked, onChange, description }) {
   return (
     <label className="flex items-start gap-3 cursor-pointer group">
       <div className={`relative w-10 h-5 rounded-full transition-colors flex-shrink-0 mt-0.5 ${checked ? 'bg-[var(--color-brand)]' : 'bg-gray-200'}`}>
-        <div className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${checked ? 'translate-x-5' : 'translate-x-0.5'}`} />
+        <div className={`absolute top-0.5 w-4 h-4 rounded-full bg-[#262B34] shadow transition-transform ${checked ? 'translate-x-5' : 'translate-x-0.5'}`} />
         <input type="checkbox" checked={checked} onChange={e => onChange(e.target.checked)} className="sr-only" />
       </div>
       <div>
-        <span className="text-sm text-gray-700 font-medium group-hover:text-gray-900 transition-colors">{label}</span>
-        {description && <p className="text-xs text-gray-400 mt-0.5">{description}</p>}
+        <span className="text-sm text-[#CBD5E1] font-medium group-hover:text-[#F1F5F9] transition-colors">{label}</span>
+        {description && <p className="text-xs text-[#4A5568] mt-0.5">{description}</p>}
       </div>
     </label>
   )
@@ -274,10 +274,10 @@ export default function ProPatientForm() {
               <ArrowLeft size={18} />
             </button>
             <div>
-              <h1 className="text-xl font-bold text-gray-900" style={{ fontFamily: 'var(--font-display)' }}>
+              <h1 className="text-xl font-bold text-[#F1F5F9]" style={{ fontFamily: 'var(--font-display)' }}>
                 {isEdit ? 'Editar paciente' : 'Nuevo paciente'}
               </h1>
-              <p className="text-xs text-gray-400 mt-0.5">
+              <p className="text-xs text-[#4A5568] mt-0.5">
                 {isEdit ? `Editando ficha de ${form.full_name || 'paciente'}` : 'Rellena los datos del nuevo paciente'}
               </p>
             </div>
@@ -289,7 +289,7 @@ export default function ProPatientForm() {
         </div>
 
         {error && (
-          <div className="mb-6 p-3 rounded-xl bg-red-50 border border-red-100 text-red-600 text-sm flex items-center gap-2">
+          <div className="mb-6 p-3 rounded-xl bg-[rgba(248,113,113,0.06)] border border-red-100 text-[#FCA5A5] text-sm flex items-center gap-2">
             <AlertTriangle size={16} />
             {error}
           </div>
@@ -330,9 +330,9 @@ export default function ProPatientForm() {
             </div>
 
             {form.current_weight && form.height && (
-              <div className="mt-4 p-3 rounded-xl bg-teal-50/50 border border-teal-100">
+              <div className="mt-4 p-3 rounded-xl bg-[rgba(45,212,191,0.08)]/50 border border-teal-100">
                 <div className="flex items-center justify-between">
-                  <span className="text-xs font-medium text-gray-500">IMC calculado</span>
+                  <span className="text-xs font-medium text-[#64748B]">IMC calculado</span>
                   <span className="text-sm font-bold text-[var(--color-brand)]">
                     {(parseFloat(form.current_weight) / Math.pow(parseFloat(form.height) / 100, 2)).toFixed(1)} kg/m²
                   </span>
@@ -350,7 +350,7 @@ export default function ProPatientForm() {
                 description="Diabetes, hipertensión, tiroides, etc." />
               {form.has_diseases && (
                 <div>
-                  <label className="block text-xs font-medium text-gray-500 mb-1.5">Descripción de enfermedades</label>
+                  <label className="block text-xs font-medium text-[#64748B] mb-1.5">Descripción de enfermedades</label>
                   <textarea value={form.diseases_description}
                     onChange={e => update('diseases_description', e.target.value)}
                     placeholder="Describe las enfermedades o condiciones..."
@@ -364,8 +364,8 @@ export default function ProPatientForm() {
                 onChange={v => update('gynecological_problems', v)}
                 description="SOP, endometriosis, menopausia, etc." />
 
-              <div className="pt-3 border-t border-gray-100">
-                <p className="text-xs font-medium text-gray-500 mb-3">Antecedentes familiares</p>
+              <div className="pt-3 border-t border-[rgba(255,255,255,0.04)]">
+                <p className="text-xs font-medium text-[#64748B] mb-3">Antecedentes familiares</p>
                 <div className="space-y-3">
                   <Toggle label="Diabetes Tipo 2" checked={form.family_history.diabetes_type2}
                     onChange={v => updateFamily('diabetes_type2', v)} />
@@ -383,14 +383,14 @@ export default function ProPatientForm() {
             <SectionHeader icon={Pill} title="Alergias e intolerancias" subtitle="Restricciones alimentarias y medicamentosas" />
             <div className="space-y-4">
               <div>
-                <label className="block text-xs font-medium text-gray-500 mb-1.5">Alergias a medicamentos</label>
+                <label className="block text-xs font-medium text-[#64748B] mb-1.5">Alergias a medicamentos</label>
                 <textarea value={form.allergies_medications}
                   onChange={e => update('allergies_medications', e.target.value)}
                   placeholder="Penicilina, ibuprofeno, etc."
                   className="input w-full min-h-[70px] resize-y" rows={2} />
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-500 mb-1.5">Intolerancias alimentarias</label>
+                <label className="block text-xs font-medium text-[#64748B] mb-1.5">Intolerancias alimentarias</label>
                 <textarea value={form.food_intolerances}
                   onChange={e => update('food_intolerances', e.target.value)}
                   placeholder="Lactosa, gluten, fructosa, etc."

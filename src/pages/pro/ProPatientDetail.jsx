@@ -43,7 +43,7 @@ export default function ProPatientDetail() {
   }
 
   if (loading) return <ProLayout><div className="flex justify-center py-20"><div className="loader" /></div></ProLayout>
-  if (!patient) return <ProLayout><div className="card text-center py-20"><p className="text-gray-400">Paciente no encontrado</p></div></ProLayout>
+  if (!patient) return <ProLayout><div className="card text-center py-20"><p className="text-[#4A5568]">Paciente no encontrado</p></div></ProLayout>
 
   const daysLeft = getDaysRemaining(patient.code_expiry)
 
@@ -55,12 +55,12 @@ export default function ProPatientDetail() {
           <button onClick={() => navigate('/pro')} className="btn btn-secondary !p-2 !rounded-xl">
             <ArrowLeft size={18} />
           </button>
-          <div className="w-14 h-14 rounded-2xl bg-teal-50 flex items-center justify-center text-lg font-bold text-[var(--color-brand)]">
+          <div className="w-14 h-14 rounded-2xl bg-[rgba(45,212,191,0.08)] flex items-center justify-center text-lg font-bold text-[var(--color-brand)]">
             {patient.full_name?.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()}
           </div>
           <div>
-            <h1 className="text-xl font-bold text-gray-900" style={{ fontFamily: 'var(--font-display)' }}>{patient.full_name}</h1>
-            <div className="flex items-center gap-3 mt-1 text-xs text-gray-400">
+            <h1 className="text-xl font-bold text-[#F1F5F9]" style={{ fontFamily: 'var(--font-display)' }}>{patient.full_name}</h1>
+            <div className="flex items-center gap-3 mt-1 text-xs text-[#4A5568]">
               {patient.phone && <span className="flex items-center gap-1"><Phone size={11} /> {patient.phone}</span>}
               {patient.email && <span className="flex items-center gap-1"><Mail size={11} /> {patient.email}</span>}
               {patient.age && <span>{patient.age} años</span>}
@@ -68,8 +68,8 @@ export default function ProPatientDetail() {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          {patient.is_blocked && <span className="badge bg-red-50 text-red-500">Bloqueado</span>}
-          {daysLeft !== null && daysLeft <= 7 && daysLeft > 0 && <span className="badge bg-amber-50 text-amber-600">{daysLeft} días</span>}
+          {patient.is_blocked && <span className="badge bg-[rgba(248,113,113,0.06)] text-[#FB7185]">Bloqueado</span>}
+          {daysLeft !== null && daysLeft <= 7 && daysLeft > 0 && <span className="badge bg-[rgba(251,191,36,0.04)] text-[#E9A820]">{daysLeft} días</span>}
           <Link to={`/pro/patient/${id}/edit`} className="btn btn-primary btn-sm">
             <Edit size={14} /> Editar
           </Link>
@@ -77,10 +77,10 @@ export default function ProPatientDetail() {
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-1 mb-6 border-b border-gray-100 pb-px">
+      <div className="flex gap-1 mb-6 border-b border-[rgba(255,255,255,0.04)] pb-px">
         {TABS.map(t => (
           <button key={t.key} onClick={() => setTab(t.key)}
-            className={`px-4 py-2.5 text-sm font-medium rounded-t-lg transition ${tab === t.key ? 'bg-teal-50 text-[var(--color-brand)] border-b-2 border-[var(--color-brand)]' : 'text-gray-400 hover:text-gray-600'}`}
+            className={`px-4 py-2.5 text-sm font-medium rounded-t-lg transition ${tab === t.key ? 'bg-[rgba(45,212,191,0.08)] text-[var(--color-brand)] border-b-2 border-[var(--color-brand)]' : 'text-[#4A5568] hover:text-[#94A3B8]'}`}
           >
             {t.label}
           </button>
@@ -107,7 +107,7 @@ function OverviewTab({ patient }) {
     <div className="grid grid-cols-2 gap-4">
       {/* Weight info */}
       <div className="card">
-        <p className="text-xs font-semibold text-gray-500 mb-3 flex items-center gap-2"><Scale size={14} /> Peso</p>
+        <p className="text-xs font-semibold text-[#64748B] mb-3 flex items-center gap-2"><Scale size={14} /> Peso</p>
         <div className="grid grid-cols-2 gap-3">
           <InfoItem label="Actual" value={patient.current_weight ? `${patient.current_weight} kg` : '—'} />
           <InfoItem label="Inicial" value={patient.initial_weight ? `${patient.initial_weight} kg` : '—'} />
@@ -119,7 +119,7 @@ function OverviewTab({ patient }) {
 
       {/* Psychological */}
       <div className="card">
-        <p className="text-xs font-semibold text-gray-500 mb-3 flex items-center gap-2"><Brain size={14} /> Nivel psicológico</p>
+        <p className="text-xs font-semibold text-[#64748B] mb-3 flex items-center gap-2"><Brain size={14} /> Nivel psicológico</p>
         <LevelBar label="Estrés" value={patient.stress_level} color="red" />
         <LevelBar label="Control alimentario" value={patient.food_control_level} color="blue" />
         <LevelBar label="Motivación" value={patient.motivation_level} color="green" />
@@ -127,7 +127,7 @@ function OverviewTab({ patient }) {
 
       {/* Medical */}
       <div className="card">
-        <p className="text-xs font-semibold text-gray-500 mb-3 flex items-center gap-2"><Heart size={14} /> Historial médico</p>
+        <p className="text-xs font-semibold text-[#64748B] mb-3 flex items-center gap-2"><Heart size={14} /> Historial médico</p>
         <div className="space-y-2 text-sm">
           <InfoItem label="Enfermedades" value={patient.has_diseases ? patient.diseases_description || 'Sí' : 'No'} />
           <InfoItem label="Ejercicio" value={patient.does_exercise ? 'Sí' : 'No'} />
@@ -139,23 +139,23 @@ function OverviewTab({ patient }) {
 
       {/* Family history */}
       <div className="card">
-        <p className="text-xs font-semibold text-gray-500 mb-3 flex items-center gap-2"><Activity size={14} /> Antecedentes familiares</p>
+        <p className="text-xs font-semibold text-[#64748B] mb-3 flex items-center gap-2"><Activity size={14} /> Antecedentes familiares</p>
         <div className="space-y-2">
           <FamilyItem label="Diabetes Tipo 2" active={fam.diabetes_type2} />
           <FamilyItem label="SOP / PCOS" active={fam.pcos} />
           <FamilyItem label="Hipotiroidismo" active={fam.hypothyroidism} />
         </div>
         {patient.notes && (
-          <div className="mt-4 pt-3 border-t border-gray-100">
-            <p className="text-xs text-gray-400 mb-1">Notas</p>
-            <p className="text-sm text-gray-600">{patient.notes}</p>
+          <div className="mt-4 pt-3 border-t border-[rgba(255,255,255,0.04)]">
+            <p className="text-xs text-[#4A5568] mb-1">Notas</p>
+            <p className="text-sm text-[#94A3B8]">{patient.notes}</p>
           </div>
         )}
       </div>
 
       {/* Dates */}
       <div className="card col-span-2">
-        <p className="text-xs font-semibold text-gray-500 mb-3 flex items-center gap-2"><Calendar size={14} /> Fechas</p>
+        <p className="text-xs font-semibold text-[#64748B] mb-3 flex items-center gap-2"><Calendar size={14} /> Fechas</p>
         <div className="flex gap-6">
           <InfoItem label="Registro" value={formatDate(patient.created_at)} />
           <InfoItem label="Última actualización" value={formatDate(patient.updated_at)} />
@@ -259,11 +259,11 @@ function DietTab({ patient, professionalId, onUpdate }) {
       <div className="card card--elevated" style={baseCfg ? { borderLeft: `4px solid ${baseCfg.color}`, background: `linear-gradient(135deg, ${baseCfg.bg}44 0%, white 60%)` } : {}}>
         <div className="flex items-center justify-between mb-3">
           <div>
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider flex items-center gap-2">
+            <p className="text-xs font-semibold text-[#64748B] uppercase tracking-wider flex items-center gap-2">
               <Calendar size={13} /> Dieta base · Todos los días
             </p>
             {baseCfg && (
-              <p className="text-[11px] text-gray-400 mt-0.5">
+              <p className="text-[11px] text-[#4A5568] mt-0.5">
                 Se aplica a los {7 - overrideCount} días sin personalización
               </p>
             )}
@@ -288,7 +288,7 @@ function DietTab({ patient, professionalId, onUpdate }) {
         </select>
 
         {!basePlan && (
-          <p className="text-xs text-amber-600 mt-2 flex items-center gap-1.5">
+          <p className="text-xs text-[#E9A820] mt-2 flex items-center gap-1.5">
             <AlertTriangle size={12} /> Selecciona una dieta base primero. Luego podrás personalizar días sueltos.
           </p>
         )}
@@ -298,10 +298,10 @@ function DietTab({ patient, professionalId, onUpdate }) {
       {basePlan && (
         <div>
           <div className="flex items-center justify-between mb-3">
-            <p className="text-sm font-semibold text-gray-800 flex items-center gap-2">
+            <p className="text-sm font-semibold text-[#E2E8F0] flex items-center gap-2">
               Plan semanal
               {overrideCount > 0 && (
-                <span className="text-[11px] font-normal text-gray-400">
+                <span className="text-[11px] font-normal text-[#4A5568]">
                   ({overrideCount} {overrideCount === 1 ? 'día personalizado' : 'días personalizados'})
                 </span>
               )}
@@ -324,7 +324,7 @@ function DietTab({ patient, professionalId, onUpdate }) {
                     onClick={() => setEditingDay(isEditing ? null : day)}
                   >
                     {/* Day name */}
-                    <span className="text-sm font-semibold text-gray-700 w-20 shrink-0">{DAY_LABELS[day]}</span>
+                    <span className="text-sm font-semibold text-[#CBD5E1] w-20 shrink-0">{DAY_LABELS[day]}</span>
 
                     {/* Diet badge */}
                     {cfg && (
@@ -336,16 +336,16 @@ function DietTab({ patient, professionalId, onUpdate }) {
                     {/* Source indicator */}
                     <span className="flex-1" />
                     {isOverride ? (
-                      <span className="text-[10px] font-semibold px-2 py-0.5 rounded-md bg-blue-50 text-blue-500">Personalizado</span>
+                      <span className="text-[10px] font-semibold px-2 py-0.5 rounded-md bg-[rgba(96,165,250,0.06)] text-blue-500">Personalizado</span>
                     ) : (
-                      <span className="text-[10px] text-gray-300">= base</span>
+                      <span className="text-[10px] text-[#333A45]">= base</span>
                     )}
 
                     {/* Remove override button */}
                     {isOverride && (
                       <button
                         onClick={e => { e.stopPropagation(); handleRemoveOverride(day) }}
-                        className="text-gray-300 hover:text-red-400 p-1 transition"
+                        className="text-[#333A45] hover:text-red-400 p-1 transition"
                         title="Quitar personalización (volver a base)"
                         disabled={isSaving}
                       >
@@ -353,13 +353,13 @@ function DietTab({ patient, professionalId, onUpdate }) {
                       </button>
                     )}
 
-                    <ChevronDown size={14} className={`text-gray-300 transition-transform ${isEditing ? 'rotate-180' : ''}`} />
+                    <ChevronDown size={14} className={`text-[#333A45] transition-transform ${isEditing ? 'rotate-180' : ''}`} />
                   </div>
 
                   {/* Inline editor */}
                   {isEditing && (
-                    <div className="ml-4 mt-1 mb-2 p-3 rounded-xl bg-gray-50 border border-gray-100">
-                      <p className="text-[11px] text-gray-400 mb-2">Cambiar dieta del {DAY_LABELS[day].toLowerCase()}:</p>
+                    <div className="ml-4 mt-1 mb-2 p-3 rounded-xl bg-[#1F232B] border border-[rgba(255,255,255,0.04)]">
+                      <p className="text-[11px] text-[#4A5568] mb-2">Cambiar dieta del {DAY_LABELS[day].toLowerCase()}:</p>
                       <div className="flex gap-2 flex-wrap">
                         {dietas.map(d => {
                           const dCfg = getDietConfig(d.slug)
@@ -469,8 +469,8 @@ function WeightTab({ patient }) {
     <div>
       <div className="flex items-center justify-between mb-4">
         <div className="flex gap-4">
-          {latest && <span className="text-sm text-gray-500">Actual: <strong className="text-gray-800">{latest.toFixed(1)} kg</strong></span>}
-          {totalChange && Number(totalChange) > 0 && <span className="text-sm text-emerald-600 flex items-center gap-1"><TrendingDown size={14} /> -{totalChange} kg</span>}
+          {latest && <span className="text-sm text-[#64748B]">Actual: <strong className="text-[#E2E8F0]">{latest.toFixed(1)} kg</strong></span>}
+          {totalChange && Number(totalChange) > 0 && <span className="text-sm text-[#34D399] flex items-center gap-1"><TrendingDown size={14} /> -{totalChange} kg</span>}
         </div>
         <button onClick={() => setShowAdd(!showAdd)} className="btn btn-primary btn-sm"><Plus size={14} /> Registrar</button>
       </div>
@@ -478,15 +478,15 @@ function WeightTab({ patient }) {
       {showAdd && (
         <form onSubmit={handleAdd} className="card card--elevated mb-4 flex items-end gap-3">
           <div className="flex-1">
-            <label className="text-xs text-gray-500">Peso (kg)</label>
+            <label className="text-xs text-[#64748B]">Peso (kg)</label>
             <input type="number" step="0.1" min="30" max="300" className="input w-full" value={newWeight} onChange={e => setNewWeight(e.target.value)} required />
           </div>
           <div className="flex-1">
-            <label className="text-xs text-gray-500">Fecha</label>
+            <label className="text-xs text-[#64748B]">Fecha</label>
             <input type="date" className="input w-full" value={newDate} onChange={e => setNewDate(e.target.value)} required />
           </div>
           <div className="flex-1">
-            <label className="text-xs text-gray-500">Nota</label>
+            <label className="text-xs text-[#64748B]">Nota</label>
             <input type="text" className="input w-full" value={newNote} onChange={e => setNewNote(e.target.value)} placeholder="Opcional" />
           </div>
           <button type="submit" disabled={saving} className="btn btn-primary btn-sm">{saving ? '...' : 'Guardar'}</button>
@@ -508,22 +508,22 @@ function WeightTab({ patient }) {
           </ResponsiveContainer>
         </div>
       ) : (
-        <div className="card text-center py-10"><p className="text-sm text-gray-400">Registra pesos para ver la gráfica</p></div>
+        <div className="card text-center py-10"><p className="text-sm text-[#4A5568]">Registra pesos para ver la gráfica</p></div>
       )}
 
       {records.length > 0 && (
         <div>
-          <p className="text-sm font-semibold text-gray-700 mb-2">Historial ({records.length})</p>
+          <p className="text-sm font-semibold text-[#CBD5E1] mb-2">Historial ({records.length})</p>
           <div className="space-y-1">
             {[...records].reverse().map(r => (
               <div key={r.id} className="card !p-2.5 flex items-center justify-between">
                 <div>
-                  <span className="text-sm font-semibold text-gray-800">{Number(r.weight).toFixed(1)} kg</span>
-                  <span className="text-xs text-gray-400 ml-2">{formatDate(r.date)}</span>
-                  {r.notes && <span className="text-xs text-gray-300 ml-2">{r.notes}</span>}
-                  <span className="text-[10px] text-gray-300 ml-2">{r.recorded_by === 'patient' ? 'Paciente' : 'Doctor'}</span>
+                  <span className="text-sm font-semibold text-[#E2E8F0]">{Number(r.weight).toFixed(1)} kg</span>
+                  <span className="text-xs text-[#4A5568] ml-2">{formatDate(r.date)}</span>
+                  {r.notes && <span className="text-xs text-[#333A45] ml-2">{r.notes}</span>}
+                  <span className="text-[10px] text-[#333A45] ml-2">{r.recorded_by === 'patient' ? 'Paciente' : 'Doctor'}</span>
                 </div>
-                <button onClick={() => handleDelete(r.id)} className="text-gray-300 hover:text-red-400 transition p-1"><Trash2 size={13} /></button>
+                <button onClick={() => handleDelete(r.id)} className="text-[#333A45] hover:text-red-400 transition p-1"><Trash2 size={13} /></button>
               </div>
             ))}
           </div>
@@ -587,46 +587,46 @@ function MedsTab({ patient, onUpdate }) {
   return (
     <div>
       <div className="flex justify-between mb-4">
-        <p className="text-sm text-gray-500">Medicación activa: {activeMeds.length}</p>
+        <p className="text-sm text-[#64748B]">Medicación activa: {activeMeds.length}</p>
         <button onClick={() => setShowAdd(!showAdd)} className="btn btn-primary btn-sm"><Plus size={14} /> Añadir</button>
       </div>
 
       {showAdd && (
         <form onSubmit={handleAdd} className="card card--elevated mb-4 space-y-3">
-          <p className="text-sm font-semibold text-gray-800">Nueva medicación</p>
+          <p className="text-sm font-semibold text-[#E2E8F0]">Nueva medicación</p>
           <div className="grid grid-cols-3 gap-3">
             <div>
-              <label className="text-xs text-gray-500">Nombre *</label>
+              <label className="text-xs text-[#64748B]">Nombre *</label>
               <input className="input w-full" value={form.medication_name} onChange={e => setForm({ ...form, medication_name: e.target.value })} required />
             </div>
             <div>
-              <label className="text-xs text-gray-500">Dosis</label>
+              <label className="text-xs text-[#64748B]">Dosis</label>
               <input className="input w-full" value={form.dosage} onChange={e => setForm({ ...form, dosage: e.target.value })} placeholder="Ej: 500mg" />
             </div>
             <div>
-              <label className="text-xs text-gray-500">Frecuencia</label>
+              <label className="text-xs text-[#64748B]">Frecuencia</label>
               <input className="input w-full" value={form.frequency} onChange={e => setForm({ ...form, frequency: e.target.value })} placeholder="Ej: 1/día" />
             </div>
             <div>
-              <label className="text-xs text-gray-500">Clicks</label>
+              <label className="text-xs text-[#64748B]">Clicks</label>
               <input type="number" className="input w-full" value={form.clicks} onChange={e => setForm({ ...form, clicks: e.target.value })} />
             </div>
             <div>
-              <label className="text-xs text-gray-500">Inicio</label>
+              <label className="text-xs text-[#64748B]">Inicio</label>
               <input type="date" className="input w-full" value={form.start_date} onChange={e => setForm({ ...form, start_date: e.target.value })} />
             </div>
             <div>
-              <label className="text-xs text-gray-500">Fin</label>
+              <label className="text-xs text-[#64748B]">Fin</label>
               <input type="date" className="input w-full" value={form.end_date} onChange={e => setForm({ ...form, end_date: e.target.value })} />
             </div>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="text-xs text-gray-500">Efectos secundarios</label>
+              <label className="text-xs text-[#64748B]">Efectos secundarios</label>
               <input className="input w-full" value={form.side_effects} onChange={e => setForm({ ...form, side_effects: e.target.value })} />
             </div>
             <div>
-              <label className="text-xs text-gray-500">Solución efectos secundarios</label>
+              <label className="text-xs text-[#64748B]">Solución efectos secundarios</label>
               <input className="input w-full" value={form.side_effects_treatment} onChange={e => setForm({ ...form, side_effects_treatment: e.target.value })} />
             </div>
           </div>
@@ -638,7 +638,7 @@ function MedsTab({ patient, onUpdate }) {
       )}
 
       {loading ? <div className="flex justify-center py-10"><div className="loader" /></div> : meds.length === 0 ? (
-        <div className="card text-center py-10"><Pill size={32} className="mx-auto text-gray-200 mb-2" /><p className="text-sm text-gray-400">Sin medicación</p></div>
+        <div className="card text-center py-10"><Pill size={32} className="mx-auto text-[#2A2F38] mb-2" /><p className="text-sm text-[#4A5568]">Sin medicación</p></div>
       ) : (
         <>
           {activeMeds.length > 0 && (
@@ -648,7 +648,7 @@ function MedsTab({ patient, onUpdate }) {
           )}
           {inactiveMeds.length > 0 && (
             <div>
-              <p className="text-xs text-gray-400 mb-2">Inactivas</p>
+              <p className="text-xs text-[#4A5568] mb-2">Inactivas</p>
               <div className="space-y-2 opacity-60">
                 {inactiveMeds.map(med => <MedRow key={med.id} med={med} onToggle={toggleActive} onDelete={deleteMed} />)}
               </div>
@@ -663,16 +663,16 @@ function MedsTab({ patient, onUpdate }) {
 function MedRow({ med, onToggle, onDelete }) {
   return (
     <div className="card !p-3 flex items-center gap-3">
-      <Pill size={16} className={med.is_active ? 'text-purple-500' : 'text-gray-300'} />
+      <Pill size={16} className={med.is_active ? 'text-[#C084FC]' : 'text-[#333A45]'} />
       <div className="flex-1 min-w-0">
-        <p className="text-sm font-semibold text-gray-800">{med.medication_name}</p>
-        <p className="text-[11px] text-gray-400">{[med.dosage, med.frequency, med.clicks ? `${med.clicks} clicks` : null].filter(Boolean).join(' · ')}</p>
+        <p className="text-sm font-semibold text-[#E2E8F0]">{med.medication_name}</p>
+        <p className="text-[11px] text-[#4A5568]">{[med.dosage, med.frequency, med.clicks ? `${med.clicks} clicks` : null].filter(Boolean).join(' · ')}</p>
       </div>
       {med.side_effects && <AlertTriangle size={14} className="text-amber-400 shrink-0" title={med.side_effects} />}
-      <button onClick={() => onToggle(med)} className={`text-xs px-2 py-1 rounded-lg ${med.is_active ? 'bg-red-50 text-red-500 hover:bg-red-100' : 'bg-green-50 text-green-600 hover:bg-green-100'} transition`}>
+      <button onClick={() => onToggle(med)} className={`text-xs px-2 py-1 rounded-lg ${med.is_active ? 'bg-[rgba(248,113,113,0.06)] text-[#FB7185] hover:bg-red-100' : 'bg-[rgba(52,211,153,0.06)] text-[#34D399] hover:bg-green-100'} transition`}>
         {med.is_active ? 'Desactivar' : 'Activar'}
       </button>
-      <button onClick={() => onDelete(med)} className="text-gray-300 hover:text-red-400 p-1"><Trash2 size={13} /></button>
+      <button onClick={() => onDelete(med)} className="text-[#333A45] hover:text-red-400 p-1"><Trash2 size={13} /></button>
     </div>
   )
 }
@@ -751,12 +751,12 @@ function AccessTab({ patient, onUpdate }) {
   return (
     <div className="max-w-lg">
       <div className="card card--elevated">
-        <p className="text-sm font-semibold text-gray-800 mb-4 flex items-center gap-2"><Key size={16} /> Código de acceso del paciente</p>
+        <p className="text-sm font-semibold text-[#E2E8F0] mb-4 flex items-center gap-2"><Key size={16} /> Código de acceso del paciente</p>
 
         {patient.access_code ? (
           <div className="space-y-4">
             <div className="flex items-center gap-3">
-              <div data-code className="flex-1 bg-gray-50 rounded-xl px-4 py-3 font-mono text-2xl tracking-[0.3em] text-center font-bold text-gray-800 select-all">
+              <div data-code className="flex-1 bg-[#1F232B] rounded-xl px-4 py-3 font-mono text-2xl tracking-[0.3em] text-center font-bold text-[#E2E8F0] select-all">
                 {patient.access_code}
               </div>
               <button onClick={handleCopy} className="btn btn-secondary !p-3 !rounded-xl" title="Copiar">
@@ -765,9 +765,9 @@ function AccessTab({ patient, onUpdate }) {
             </div>
 
             <div className="flex items-center justify-between text-sm">
-              <span className="text-gray-400">Expira: <strong className="text-gray-600">{formatDate(patient.code_expiry)}</strong></span>
+              <span className="text-[#4A5568]">Expira: <strong className="text-[#94A3B8]">{formatDate(patient.code_expiry)}</strong></span>
               {daysLeft !== null && (
-                <span className={`badge ${daysLeft <= 0 ? 'bg-red-50 text-red-500' : daysLeft <= 7 ? 'bg-amber-50 text-amber-600' : 'bg-green-50 text-green-600'}`}>
+                <span className={`badge ${daysLeft <= 0 ? 'bg-[rgba(248,113,113,0.06)] text-[#FB7185]' : daysLeft <= 7 ? 'bg-[rgba(251,191,36,0.04)] text-[#E9A820]' : 'bg-[rgba(52,211,153,0.06)] text-[#34D399]'}`}>
                   {daysLeft <= 0 ? 'Expirado' : `${daysLeft} días`}
                 </span>
               )}
@@ -777,15 +777,15 @@ function AccessTab({ patient, onUpdate }) {
               <button onClick={handleGenerate} disabled={saving} className="btn btn-primary btn-sm flex-1">
                 <Key size={14} /> {saving ? '...' : 'Regenerar código (28d)'}
               </button>
-              <button onClick={handleToggleBlock} disabled={saving} className={`btn btn-sm flex-1 ${patient.is_blocked ? 'bg-green-50 text-green-600 hover:bg-green-100' : 'bg-red-50 text-red-500 hover:bg-red-100'}`}>
+              <button onClick={handleToggleBlock} disabled={saving} className={`btn btn-sm flex-1 ${patient.is_blocked ? 'bg-[rgba(52,211,153,0.06)] text-[#34D399] hover:bg-green-100' : 'bg-[rgba(248,113,113,0.06)] text-[#FB7185] hover:bg-red-100'}`}>
                 {patient.is_blocked ? <><Unlock size={14} /> Desbloquear</> : <><Lock size={14} /> Bloquear</>}
               </button>
             </div>
           </div>
         ) : (
           <div className="text-center py-6">
-            <Key size={32} className="mx-auto text-gray-200 mb-3" />
-            <p className="text-sm text-gray-400 mb-4">Sin código de acceso generado</p>
+            <Key size={32} className="mx-auto text-[#2A2F38] mb-3" />
+            <p className="text-sm text-[#4A5568] mb-4">Sin código de acceso generado</p>
             <button onClick={handleGenerate} disabled={saving} className="btn btn-primary btn-sm">
               <Key size={14} /> {saving ? 'Generando...' : 'Generar código (28 días)'}
             </button>
@@ -793,7 +793,7 @@ function AccessTab({ patient, onUpdate }) {
         )}
       </div>
 
-      <div className="mt-4 p-4 rounded-xl bg-blue-50 border border-blue-100">
+      <div className="mt-4 p-4 rounded-xl bg-[rgba(96,165,250,0.06)] border border-blue-100">
         <p className="text-xs text-blue-700">El paciente introduce este código en la pantalla de acceso de la app para ver su dieta, peso y medicación. El código caduca automáticamente a los 28 días.</p>
       </div>
     </div>
@@ -804,8 +804,8 @@ function AccessTab({ patient, onUpdate }) {
 function InfoItem({ label, value }) {
   return (
     <div>
-      <p className="text-[11px] text-gray-400">{label}</p>
-      <p className="text-sm text-gray-700 font-medium">{value}</p>
+      <p className="text-[11px] text-[#4A5568]">{label}</p>
+      <p className="text-sm text-[#CBD5E1] font-medium">{value}</p>
     </div>
   )
 }
@@ -813,10 +813,10 @@ function InfoItem({ label, value }) {
 function FamilyItem({ label, active }) {
   return (
     <div className="flex items-center gap-2">
-      <div className={`w-5 h-5 rounded-md flex items-center justify-center ${active ? 'bg-red-50' : 'bg-gray-50'}`}>
-        {active ? <Check size={12} className="text-red-500" /> : <span className="text-gray-300 text-xs">—</span>}
+      <div className={`w-5 h-5 rounded-md flex items-center justify-center ${active ? 'bg-[rgba(248,113,113,0.06)]' : 'bg-[#1F232B]'}`}>
+        {active ? <Check size={12} className="text-[#FB7185]" /> : <span className="text-[#333A45] text-xs">—</span>}
       </div>
-      <span className={`text-sm ${active ? 'text-gray-800 font-medium' : 'text-gray-400'}`}>{label}</span>
+      <span className={`text-sm ${active ? 'text-[#E2E8F0] font-medium' : 'text-[#4A5568]'}`}>{label}</span>
     </div>
   )
 }
@@ -827,10 +827,10 @@ function LevelBar({ label, value, color }) {
   return (
     <div className="mb-3">
       <div className="flex justify-between mb-1">
-        <span className="text-xs text-gray-500">{label}</span>
-        <span className="text-xs font-bold text-gray-700">{v}/10</span>
+        <span className="text-xs text-[#64748B]">{label}</span>
+        <span className="text-xs font-bold text-[#CBD5E1]">{v}/10</span>
       </div>
-      <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+      <div className="h-2 bg-[#252A33] rounded-full overflow-hidden">
         <div className={`h-full rounded-full ${colors[color]} transition-all`} style={{ width: `${v * 10}%` }} />
       </div>
     </div>

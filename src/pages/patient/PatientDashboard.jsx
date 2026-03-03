@@ -156,7 +156,7 @@ export default function PatientDashboard() {
       const pid = profile.id
       const [plansRes, weightsRes, medsRes, mealsRes] = await Promise.all([
         supabase.from('nm_diet_plans').select('*').eq('patient_id', pid).eq('is_active', true),
-        supabase.from('nm_weight_records').select('*').eq('patient_id', pid).order('date', { ascending: false }).limit(10),
+        supabase.from('nm_weight_records').select('*').eq('patient_id', pid).order('date', { ascending: false }).order('created_at', { ascending: false }).limit(10),
         supabase.from('nm_medications').select('*').eq('patient_id', pid).eq('is_active', true),
         supabase.from('nm_daily_meals').select('*').eq('patient_id', pid).eq('is_active', true),
       ])

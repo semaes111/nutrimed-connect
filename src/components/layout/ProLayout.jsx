@@ -52,7 +52,7 @@ export default function ProLayout({ children, title }) {
         <div className="p-4" style={{ borderTop: '1px solid var(--border-subtle)' }}>
           <div className="flex items-center gap-3 mb-3">
             <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold"
-              style={{ background: 'rgba(45,212,191,0.1)', color: '#2DD4BF', boxShadow: 'inset 1px 1px 2px rgba(0,0,0,0.2)' }}>
+              style={{ background: 'rgba(45,212,191,0.1)', color: 'var(--text-accent)', boxShadow: 'inset 1px 1px 2px rgba(0,0,0,0.2)' }}>
               {profile?.full_name?.charAt(0) || 'P'}
             </div>
             <div className="min-w-0">

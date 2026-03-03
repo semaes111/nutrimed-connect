@@ -36,7 +36,7 @@ export default function PatientLayout({ children, title, subtitle, rightAction }
               {isDark ? <Sun size={16} /> : <Moon size={16} />}
             </button>
             <button onClick={logout} className="p-2.5 rounded-xl transition-all duration-200" title="Cerrar sesión"
-              style={{ color: '#4A5568' }}
+              style={{ color: 'var(--text-secondary)' }}
               onMouseEnter={e => { e.currentTarget.style.background = 'rgba(45,212,191,0.08)'; e.currentTarget.style.color = '#2DD4BF' }}
               onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = '#4A5568' }}>
               <LogOut size={17} />

@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '../../lib/supabase'
 import { DAYS_ORDER, DAY_LABELS, getDietConfig } from '../../lib/dietConfig'
-import { UtensilsCrossed, Coffee, Sun, Moon, Cookie, Save, Check, ChevronDown, ChevronUp, Sparkles, Loader2 } from 'lucide-react'
+import { UtensilsCrossed, Coffee, Sun, Moon, Cookie, Save, Check, ChevronDown, ChevronUp, Sparkles, Loader2, Wand2 } from 'lucide-react'
 
 const MEAL_ICONS = {
   breakfast: Coffee,
@@ -19,6 +19,73 @@ const MEAL_LABELS = {
   snack_afternoon: 'Merienda',
 }
 
+/* ── Mapeo diet_code → nombre en nm_breakfast_catalog ───────────── */
+const BREAKFAST_CATALOG_MAP = {
+  'D01': 'Completo IG Intermedio',
+  'D02': 'Completo IG Bajo',
+  'D03': 'Acelerado IG Bajo',
+  'D04': 'Acelerado IG Bajo',
+  'D05': 'Completo IG Bajo',
+  'D06': 'Acelerado IG Bajo',
+  'D07': 'Acelerado Rescate',
+  'D08': 'Acelerado Rescate',
+  'D09': 'Acelerado Rescate',
+  'D10': 'Completo IG Intermedio',
+}
+
+/* ── Generadores de plantillas ───────────────────────────────────── */
+function generateBreakfastTemplate(bfRow) {
+  if (!bfRow) return ''
+  const lines = []
+  if (bfRow.drinks)   lines.push(`☕ Bebidas: ${bfRow.drinks}`)
+  if (bfRow.bread)    lines.push(`🍞 Pan: ${bfRow.bread}`)
+  if (bfRow.toppings) lines.push(`🧀 Complementos tostada:\n   ${bfRow.toppings}`)
+  if (bfRow.dairy)    lines.push(`🥛 Lácteos: ${bfRow.dairy}`)
+  if (bfRow.fruits)   lines.push(`🍎 Frutas: ${bfRow.fruits}`)
+  if (bfRow.extras)   lines.push(`➕ Opciones extra:\n   ${bfRow.extras}`)
+  return `═══ BASE FIJA ═══\n${lines.join('\n')}`
+}
+
+function generateLunchDinnerTemplate(platos) {
+  if (!platos || platos.length === 0) return ''
+  const options = platos.slice(0, 4)
+  const labels = ['OPCIÓN A', 'OPCIÓN B', 'OPCIÓN C', 'OPCIÓN D']
+  return options.map((p, i) => {
+    const text = p.ingredients ? `🍽️ ${p.name}\n   ${p.ingredients}` : `🍽️ ${p.name}`
+    return `═══ ${labels[i]} ═══\n${text}`
+  }).join('\n\n')
+}
+
+function generateSnackTemplate(dietCode, bfRow) {
+  // Snacks basados en el tipo de dieta
+  const snacksByCode = {
+    'D01': '🍎 Fruta de temporada (manzana, pera, naranja, kiwi)\n🥛 Yogur natural sin azúcar + 1 puñado frutos secos\n🧀 Quesito + 3-4 nueces',
+    'D02': '🍎 Fruta baja en IG (fresas, arándanos, kiwi, manzana)\n🥛 Yogur natural sin azúcar + semillas chía\n🥑 1/4 aguacate con limón',
+    'D03': '🍎 Fruta: manzana, kiwi o frutos rojos\n🥛 Yogur natural sin azúcar\n🥚 Huevo duro + pepino',
+    'D04': '🥑 1/4 aguacate + nueces\n🧀 Queso curado + jamón serrano\n🥚 Huevo duro + aceitunas',
+    'D05': '🍇 Frutos rojos (arándanos, frambuesas, fresas)\n🥛 Yogur natural + semillas\n🥜 Almendras crudas (20g)',
+    'D06': '🥑 1/4 aguacate\n🥚 Huevo duro\n🧀 Queso fresco + pepino',
+    'D07': '🥛 Yogur natural sin azúcar\n🍎 Kiwi o piña x2\n🥚 Huevo duro',
+    'D08': '🥛 Yogur natural sin azúcar\n🥚 Huevo duro\n🥒 Pepino + 3 nueces',
+    'D09': '🥛 Yogur natural sin azúcar\n🥚 Huevo duro',
+    'D10': '🍎 Fruta integral (manzana, pera, naranja)\n🥛 Yogur natural + 1 cdta chía\n🥜 Almendras (20g) + fruta',
+  }
+  return snacksByCode[dietCode] || '🍎 Fruta de temporada\n🥛 Yogur natural sin azúcar\n🥜 Puñado de frutos secos (20g)'
+}
+
+function buildDietCodeMap() {
+  return {
+    'metabolica': 'D06', 'rescate': 'D07', 'antioxidante': 'D05',
+    'antiinflamatoria': 'D03', 'keto-microbiota': 'D04',
+    'ig-bajo': 'D02', 'ig-medio': 'D01', 'intermedio-integral': 'D10',
+    'embarazo': 'D01', 'metabolica-antioxidante': 'D06',
+    'rescate-proteica': 'D07', 'rescate-proteica-v2': 'D08',
+    'rescate-proteica-v3': 'D09', 'antiinflamatoria-ig-bajo': 'D03',
+    'progresiva-ig-bajo': 'D02', 'progresiva-ig-medio': 'D01',
+    'progresiva-intermedio-integral': 'D10',
+  }
+}
+
 export default function MealsTab({ patient, professionalId }) {
   const [meals, setMeals] = useState({})
   const [dietPlans, setDietPlans] = useState([])
@@ -29,6 +96,7 @@ export default function MealsTab({ patient, professionalId }) {
   const [loadError, setLoadError] = useState(null)
   const [saving, setSaving] = useState(null)
   const [saved, setSaved] = useState({})
+  const [autoFilled, setAutoFilled] = useState({})
   const [suggestingFor, setSuggestingFor] = useState(null)
 
   const loadAll = useCallback(async () => {
@@ -47,12 +115,54 @@ export default function MealsTab({ patient, professionalId }) {
       setLoading(false)
       return
     }
-    const mealsMap = {}
-    ;(mealsRes.data || []).forEach(m => { mealsMap[m.day_of_week] = m })
+    const plans     = plansRes.data   || []
+    const catalog   = mealCatRes.data || []
+    const bfCatalog = bfastRes.data   || []
+    const dietCodeMap = buildDietCodeMap()
+
+    /* ── Construir mealsMap desde BD ─────────────────────────────── */
+    const savedMealsMap = {}
+    ;(mealsRes.data || []).forEach(m => { savedMealsMap[m.day_of_week] = m })
+
+    /* ── Auto-fill para días SIN datos guardados ─────────────────── */
+    const autoFillMap = {}
+    const mealsMap = { ...savedMealsMap }
+
+    DAYS_ORDER.forEach(day => {
+      if (savedMealsMap[day]) return // ya tiene datos → no tocar
+
+      // Obtener el plan para este día
+      const plan = plans.find(p => p.day_of_week === day) || plans.find(p => p.day_of_week === 'todos')
+      if (!plan) return // sin dieta asignada
+
+      const code = plan.diet_code || dietCodeMap[plan.diet_type || ''] || ''
+      if (!code) return
+
+      // Generar breakfast template
+      const bfName = BREAKFAST_CATALOG_MAP[code]
+      const bfRow  = bfCatalog.find(b => b.name === bfName)
+      const breakfast = generateBreakfastTemplate(bfRow)
+
+      // Generar lunch/dinner templates desde nm_meal_catalog
+      const platos = catalog.filter(m => m.diet_codes && m.diet_codes.includes(code))
+      const lunch  = generateLunchDinnerTemplate(platos)
+      const dinner = generateLunchDinnerTemplate(
+        // Rotar platos para cena (distintos de comida)
+        [...platos.slice(Math.ceil(platos.length / 2)), ...platos.slice(0, Math.ceil(platos.length / 2))]
+      )
+
+      // Snacks desde plantillas
+      const snack = generateSnackTemplate(code, bfRow)
+
+      mealsMap[day] = { day_of_week: day, breakfast, lunch, dinner, snack_morning: snack, snack_afternoon: snack }
+      autoFillMap[day] = true // marcar como auto-generado (sin guardar)
+    })
+
     setMeals(mealsMap)
-    setDietPlans(plansRes.data || [])
-    setMealCatalog(mealCatRes.data || [])
-    setBreakfastCatalog(bfastRes.data || [])
+    setAutoFilled(autoFillMap)
+    setDietPlans(plans)
+    setMealCatalog(catalog)
+    setBreakfastCatalog(bfCatalog)
     setLoading(false)
   }, [patient?.id])
 
@@ -142,8 +252,10 @@ export default function MealsTab({ patient, professionalId }) {
     })
     setSaving(null)
     if (!error) {
+      // Quitar del autoFilled — ahora está persistido en BD
+      setAutoFilled(prev => { const n = { ...prev }; delete n[day]; return n })
       setSaved(prev => ({ ...prev, [day]: true }))
-      setTimeout(() => setSaved(prev => ({ ...prev, [day]: false })), 2000)
+      setTimeout(() => setSaved(prev => ({ ...prev, [day]: false })), 2500)
     }
   }
 
@@ -169,6 +281,12 @@ export default function MealsTab({ patient, professionalId }) {
     await loadAll()
   }
 
+  // Solo días con datos GUARDADOS en BD (no auto-fill pendiente)
+  const savedDays = DAYS_ORDER.filter(d => {
+    const m = meals[d]
+    return m && (m.breakfast || m.lunch || m.dinner) && !autoFilled[d]
+  })
+  // Días con datos (guardados o auto-fill)
   const filledDays = DAYS_ORDER.filter(d => {
     const m = meals[d]
     return m && (m.breakfast || m.lunch || m.dinner)
@@ -180,7 +298,7 @@ export default function MealsTab({ patient, professionalId }) {
       <div className="flex items-center justify-between">
         <p className="text-sm font-semibold text-gray-900 flex items-center gap-2">
           <UtensilsCrossed size={14} className="text-[var(--color-brand)]" />
-          Menús semanales — {filledDays.length}/7 días configurados
+          Menús semanales — {savedDays.length}/7 días guardados
         </p>
       </div>
 
@@ -210,11 +328,15 @@ export default function MealsTab({ patient, professionalId }) {
         </div>
       )}
 
-      {/* Quick fill hint — solo cuando hay dieta asignada pero aún sin menús */}
-      {!loading && !loadError && dietPlans.length > 0 && filledDays.length === 0 && (
-        <div className="card !p-3 bg-blue-50 border border-blue-200">
-          <p className="text-xs text-blue-700">
-            ✅ Dieta asignada. Ahora configura el menú de cada día usando las sugerencias automáticas.
+      {/* Info auto-fill — menús pre-cargados desde plantilla de dieta */}
+      {!loading && !loadError && dietPlans.length > 0 && Object.keys(autoFilled).length > 0 && (
+        <div className="card !p-3 bg-teal-50 border border-teal-200">
+          <p className="text-xs text-teal-700 flex items-center gap-1.5">
+            <Wand2 size={12} className="text-teal-500 shrink-0" />
+            <span>
+              <strong>Menús pre-cargados</strong> automáticamente desde la plantilla de la dieta asignada.
+              Revisa cada día, ajusta lo que necesites y pulsa <strong>Guardar</strong> para confirmar.
+            </span>
           </p>
         </div>
       )}
@@ -228,6 +350,7 @@ export default function MealsTab({ patient, professionalId }) {
         const hasMeals = m.breakfast || m.lunch || m.dinner
         const isSaving = saving === day || saving === 'all'
         const isSaved = saved[day]
+        const isAutoFilled = autoFilled[day]
 
         return (
           <div key={day} className="card overflow-hidden" style={cfg ? { borderLeft: `3px solid ${cfg.color}` } : {}}>
@@ -247,9 +370,19 @@ export default function MealsTab({ patient, professionalId }) {
                 </div>
               </div>
               <div className="flex items-center gap-2">
-                {hasMeals && (
+                {hasMeals && !isAutoFilled && (
                   <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-600 font-medium">
-                    ✓ Configurado
+                    ✓ Guardado
+                  </span>
+                )}
+                {isAutoFilled && (
+                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-teal-50 text-teal-600 font-medium flex items-center gap-1">
+                    <Wand2 size={9} /> Pre-cargado
+                  </span>
+                )}
+                {!hasMeals && !isAutoFilled && (
+                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-gray-100 text-gray-400 font-medium">
+                    Sin menú
                   </span>
                 )}
                 {isExpanded ? <ChevronUp size={16} className="text-gray-400" /> : <ChevronDown size={16} className="text-gray-400" />}
@@ -259,10 +392,20 @@ export default function MealsTab({ patient, professionalId }) {
             {/* Expanded meal editor */}
             {isExpanded && (
               <div className="border-t px-3 pb-3 pt-2 space-y-3">
+                {/* Banner auto-fill dentro del día expandido */}
+                {isAutoFilled && (
+                  <div className="rounded-lg bg-teal-50 border border-teal-200 px-3 py-2">
+                    <p className="text-[11px] text-teal-700">
+                      ✨ Menú generado desde la plantilla <strong>{plan.diet_name || plan.diet_type}</strong>. Edita libremente y pulsa <strong>Guardar día</strong>.
+                    </p>
+                  </div>
+                )}
+
                 {['breakfast', 'lunch', 'dinner', 'snack_morning', 'snack_afternoon'].map(mealType => {
                   const Icon = MEAL_ICONS[mealType]
                   const suggestions = getMealSuggestions(day, mealType)
                   const showSuggestions = suggestingFor === `${day}-${mealType}`
+                  const rowCount = mealType === 'breakfast' ? 6 : mealType === 'lunch' || mealType === 'dinner' ? 5 : 3
 
                   return (
                     <div key={mealType}>
@@ -286,7 +429,7 @@ export default function MealsTab({ patient, professionalId }) {
                         onChange={e => updateMealField(day, mealType, e.target.value)}
                         placeholder={`Describe el ${MEAL_LABELS[mealType].toLowerCase()} del ${DAY_LABELS[day].toLowerCase()}...`}
                         className="w-full text-sm border border-gray-200 rounded-lg p-2.5 resize-none focus:ring-1 focus:ring-[var(--color-brand)] focus:border-[var(--color-brand)] transition placeholder:text-gray-300"
-                        rows={mealType === 'breakfast' ? 4 : 3}
+                        rows={rowCount}
                       />
                       {/* Suggestions dropdown */}
                       {showSuggestions && suggestions.length > 0 && (
@@ -332,7 +475,7 @@ export default function MealsTab({ patient, professionalId }) {
                     style={{ background: isSaved ? '#10B981' : 'var(--color-brand)' }}
                   >
                     {isSaving ? <Loader2 size={12} className="animate-spin" /> : isSaved ? <Check size={12} /> : <Save size={12} />}
-                    {isSaving ? 'Guardando...' : isSaved ? 'Guardado' : 'Guardar día'}
+                    {isSaving ? 'Guardando...' : isSaved ? '¡Guardado!' : 'Guardar día'}
                   </button>
                   {hasMeals && (
                     <button

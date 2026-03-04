@@ -2,7 +2,7 @@ import 'jsr:@supabase/functions-js/edge-runtime.d.ts'
 import { createClient } from 'npm:@supabase/supabase-js@2'
 
 // ═══════════════════════════════════════════════════════════════════════
-// nm-chat v13 — Template auto-fill server-side
+// nm-chat v14 — Doctor notes in RAG context
 // Fix: cuando nm_daily_meals vacío, genera plantilla desde nm_meal_catalog
 //      + nm_breakfast_catalog igual que el frontend React
 // ═══════════════════════════════════════════════════════════════════════
@@ -112,23 +112,26 @@ Responde SOLO JSON válido, sin markdown, sin backticks:
 const FORMATTER_SYSTEM = `Eres el asistente nutricional personal del paciente.
 
 JERARQUÍA DE FUENTES (OBLIGATORIA — seguir en este orden):
-1. MENÚ SEMANAL GUARDADO (etiquetado "MENÚ GUARDADO"): Datos personalizados por el dietista. Máxima prioridad.
-2. PLANTILLA BASE DE DIETA (etiquetado "PLANTILLA BASE"): Generada automáticamente desde el catálogo de la dieta asignada. Usar cuando no hay menú guardado.
-3. ALIMENTOS PERMITIDOS POR CÓDIGO DE DIETA: Referencia secundaria de frecuencia y preparación.
-4. DESCRIPCIÓN DE DIETA: Para explicar en qué consiste su dieta si lo pregunta.
-5. HISTORIAL DE PESO: Solo para preguntas de progreso.
+1. MENÚ GUARDADO (etiquetado "MENÚ GUARDADO"): Datos personalizados por el dietista. Máxima prioridad.
+   - Las líneas "[INDICACIONES DEL DOCTOR PARA ESTE DÍA]" son instrucciones directas del profesional. SIEMPRE refléjalas cuando sean relevantes para la pregunta.
+2. DIETA ASIGNADA: Las líneas "[NOTA DEL PROFESIONAL]" son restricciones o ajustes específicos del doctor. OBLIGATORIO respetarlas y mencionarlas si el paciente pregunta por ese día o dieta.
+3. PLANTILLA BASE DE DIETA (etiquetado "PLANTILLA BASE"): Generada automáticamente. Usar cuando no hay menú guardado.
+4. ALIMENTOS PERMITIDOS POR CÓDIGO DE DIETA: Referencia de frecuencia y preparación.
+5. DESCRIPCIÓN DE DIETA: Para explicar en qué consiste su dieta si lo pregunta.
+6. HISTORIAL DE PESO: Solo para preguntas de progreso.
 
 REGLAS ABSOLUTAS:
-1. Si hay PLANTILLA BASE, úsala como referencia de qué puede comer. NO digas "el doctor no ha configurado tu menú". La plantilla es la dieta real del paciente.
-2. NUNCA uses conocimiento nutricional general externo. Solo los datos RAG.
-3. NUNCA prescribas medicación ni dosis.
-4. NUNCA diagnostiques ni prometas resultados.
-5. Usa tono cercano, profesional y conciso (máximo 3 frases).
-6. Si la pregunta es médica compleja di: "Eso mejor lo hablamos con el doctor en la próxima consulta."
-7. Zero emojis. Texto natural, sin markdown, sin listas.
-8. Responde SIEMPRE en español.
-9. Preséntate como "tu asistente nutricional personal". Sin nombre propio.
-10. SOLO di "no encuentro tu dieta" si NO hay ni menú guardado NI plantilla base en los datos RAG.`
+1. Las anotaciones del doctor ([NOTA DEL PROFESIONAL], [INDICACIONES DEL DOCTOR]) tienen prioridad absoluta. Si el doctor indica algo concreto para un día o dieta, menciónalo siempre que sea relevante.
+2. Si hay PLANTILLA BASE, úsala como referencia. NO digas "el doctor no ha configurado tu menú".
+3. NUNCA uses conocimiento nutricional general externo. Solo los datos RAG.
+4. NUNCA prescribas medicación ni dosis.
+5. NUNCA diagnostiques ni prometas resultados.
+6. Usa tono cercano, profesional y conciso (máximo 3-4 frases).
+7. Si la pregunta es médica compleja di: "Eso mejor lo hablamos con el doctor en la próxima consulta.".
+8. Zero emojis. Texto natural, sin markdown, sin listas.
+9. Responde SIEMPRE en español.
+10. Preséntate como "tu asistente nutricional personal". Sin nombre propio.
+11. SOLO di "no encuentro tu dieta" si NO hay ni menú guardado NI plantilla base en los datos RAG.`
 
 // ─── ANTHROPIC API CALL ──────────────────────────────────────────────
 async function callAnthropic(
@@ -224,9 +227,14 @@ async function fetchRAGContext(
   if (resolvedPlans.length > 0) {
     ragParts.push(
       `DIETA ASIGNADA AL PACIENTE:\n` +
-      resolvedPlans.map(d =>
-        `- ${d.day_of_week}: ${d.diet_name || d.diet_type} (código: ${d.resolved_code || 'N/A'})`
-      ).join('\n')
+      resolvedPlans.map(d => {
+        let line = `- ${d.day_of_week}: ${d.diet_name || d.diet_type} (código: ${d.resolved_code || 'N/A'})`
+        // Instrucciones del profesional para este día/dieta — INCLUIR SIEMPRE
+        if (d.notes && d.notes.trim()) {
+          line += `\n    [NOTA DEL PROFESIONAL para ${d.day_of_week}]: ${d.notes.trim()}`
+        }
+        return line
+      }).join('\n')
     )
   } else {
     ragParts.push('DIETA ASIGNADA: Sin dieta activa registrada.')
@@ -257,6 +265,10 @@ async function fetchRAGContext(
       if (m.lunch)           parts.push(`  COMIDA: ${m.lunch}`)
       if (m.snack_afternoon) parts.push(`  MERIENDA: ${m.snack_afternoon}`)
       if (m.dinner)          parts.push(`  CENA: ${m.dinner}`)
+      // Notas del profesional para este día — instrucciones personalizadas del dietista
+      if (m.notes && m.notes.trim()) {
+        parts.push(`  [INDICACIONES DEL DOCTOR PARA ESTE DÍA]: ${m.notes.trim()}`)
+      }
       return parts.join('\n')
     })
     ragParts.push(
@@ -586,13 +598,13 @@ Deno.serve(async (req: Request) => {
     const classifyStart = Date.now()
     const classification = await classifyIntent(userMessage, patientContext)
     const classifyTime   = Date.now() - classifyStart
-    console.log(`[v13 Phase1] intent=${classification.intent} conf=${classification.confidence} (${classifyTime}ms)`)
+    console.log(`[v14 Phase1] intent=${classification.intent} conf=${classification.confidence} (${classifyTime}ms)`)
 
     // FASE 2: RAG (con template auto-fill cuando nm_daily_meals vacío)
     const ragStart   = Date.now()
     const ragContext = await fetchRAGContext(supabase, classification.intent, classification.entities, patientId)
     const ragTime    = Date.now() - ragStart
-    console.log(`[v13 Phase2] RAG ${ragContext.length} chars (${ragTime}ms)`)
+    console.log(`[v14 Phase2] RAG ${ragContext.length} chars (${ragTime}ms)`)
 
     // FASE 3: Formatear
     const formatStart = Date.now()
@@ -612,7 +624,7 @@ Deno.serve(async (req: Request) => {
     const formattedResponse = formatResult.text || 'Lo siento, no he podido procesar tu consulta.'
     const formatTime        = Date.now() - formatStart
     const totalTime         = Date.now() - startTime
-    console.log(`[v13 Phase3] format ${formatTime}ms | total ${totalTime}ms`)
+    console.log(`[v14 Phase3] format ${formatTime}ms | total ${totalTime}ms`)
 
     if (isDirectCall && conversationId) {
       await supabase.from('nm_chat_messages').insert({
@@ -626,7 +638,7 @@ Deno.serve(async (req: Request) => {
           models:     { classifier: MODEL_CLASSIFIER, formatter: MODEL_FORMATTER },
           timing:     { classify_ms: classifyTime, rag_ms: ragTime, format_ms: formatTime, total_ms: totalTime },
           rag_length: ragContext.length,
-          version:    'v13',
+          version:    'v14',
         }
       })
     }
@@ -650,20 +662,20 @@ Deno.serve(async (req: Request) => {
         },
         timing: { classify_ms: classifyTime, rag_ms: ragTime, format_ms: formatTime, total_ms: totalTime },
         models: { classifier: MODEL_CLASSIFIER, formatter: MODEL_FORMATTER },
-        version: 'v13',
+        version: 'v14',
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )
 
   } catch (error) {
-    console.error('[nm-chat v13] Fatal:', error)
+    console.error('[nm-chat v14] Fatal:', error)
     return new Response(
       JSON.stringify({
         content: 'Lo siento, ha habido un error. Inténtalo de nuevo.',
         message: 'Lo siento, ha habido un error. Inténtalo de nuevo.',
         error:   String(error),
         timing:  { total_ms: Date.now() - startTime },
-        version: 'v13',
+        version: 'v14',
       }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )

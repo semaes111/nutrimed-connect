@@ -2,11 +2,9 @@ import 'jsr:@supabase/functions-js/edge-runtime.d.ts'
 import { createClient } from 'npm:@supabase/supabase-js@2'
 
 // ═══════════════════════════════════════════════════════════════════════
-// nm-chat v12 — RAG Fix: diet_code mapping + nm_daily_meals siempre cargado
-// Fixes:
-//   v11 BUG 1: diet_type slug !== diet_code D0x → ahora usa diet_code (columna añadida)
-//   v11 BUG 2: nm_daily_meals solo cargaba para 2 intents → ahora carga SIEMPRE
-//   v11 BUG 3: system prompt sin jerarquía autoridad → ahora explícito
+// nm-chat v13 — Template auto-fill server-side
+// Fix: cuando nm_daily_meals vacío, genera plantilla desde nm_meal_catalog
+//      + nm_breakfast_catalog igual que el frontend React
 // ═══════════════════════════════════════════════════════════════════════
 
 const MODEL_CLASSIFIER = 'claude-3-haiku-20240307'
@@ -16,6 +14,68 @@ const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
+}
+
+// ─── MAPEOS DIET_CODE ──────────────────────────────────────────────────
+// Misma lógica que dietConfig.js frontend — fuente de verdad compartida
+const DIET_CODE_MAP: Record<string, string> = {
+  'metabolica': 'D06', 'rescate': 'D07', 'antioxidante': 'D05',
+  'antiinflamatoria': 'D03', 'keto-microbiota': 'D04',
+  'ig-bajo': 'D02', 'ig-medio': 'D01', 'intermedio-integral': 'D10',
+  'embarazo': 'D01', 'metabolica-antioxidante': 'D06',
+  'rescate-proteica': 'D07', 'rescate-proteica-v2': 'D08',
+  'rescate-proteica-v3': 'D09', 'antiinflamatoria-ig-bajo': 'D03',
+  'progresiva-ig-bajo': 'D02', 'progresiva-ig-medio': 'D01',
+  'progresiva-intermedio-integral': 'D10',
+}
+
+const BREAKFAST_MAP: Record<string, string> = {
+  'D01': 'Completo IG Intermedio', 'D02': 'Completo IG Bajo',
+  'D03': 'Acelerado IG Bajo',     'D04': 'Acelerado IG Bajo',
+  'D05': 'Completo IG Bajo',      'D06': 'Acelerado IG Bajo',
+  'D07': 'Acelerado Rescate',     'D08': 'Acelerado Rescate',
+  'D09': 'Acelerado Rescate',     'D10': 'Completo IG Intermedio',
+}
+
+const SNACK_MAP: Record<string, string> = {
+  'D01': 'Fruta de temporada (manzana, pera, naranja, kiwi) / Yogur natural sin azúcar + frutos secos / Quesito + nueces',
+  'D02': 'Fruta baja en IG (fresas, arándanos, kiwi, manzana) / Yogur natural sin azúcar + semillas chía / Aguacate con limón',
+  'D03': 'Fruta: manzana, kiwi o frutos rojos / Yogur natural sin azúcar / Huevo duro + pepino',
+  'D04': 'Aguacate + nueces / Queso curado + jamón serrano / Huevo duro + aceitunas',
+  'D05': 'Frutos rojos (arándanos, frambuesas, fresas) / Yogur natural + semillas / Almendras crudas (20g)',
+  'D06': 'Aguacate / Huevo duro / Queso fresco + pepino',
+  'D07': 'Yogur natural sin azúcar / Kiwi o piña x2 / Huevo duro',
+  'D08': 'Yogur natural sin azúcar / Huevo duro / Pepino + 3 nueces',
+  'D09': 'Yogur natural sin azúcar / Huevo duro',
+  'D10': 'Fruta integral (manzana, pera, naranja) / Yogur natural + chía / Almendras (20g) + fruta',
+}
+
+const DAYS_ORDER = ['lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado', 'domingo']
+
+// ─── GENERADORES DE PLANTILLA (mirror de dietConfig.js) ───────────────
+function buildBreakfastText(bf: Record<string, string>): string {
+  const parts: string[] = []
+  if (bf.drinks)   parts.push(`Bebidas: ${bf.drinks}`)
+  if (bf.bread)    parts.push(`Pan: ${bf.bread}`)
+  if (bf.toppings) parts.push(`Complementos tostada: ${bf.toppings}`)
+  if (bf.dairy)    parts.push(`Lácteos: ${bf.dairy}`)
+  if (bf.fruits)   parts.push(`Frutas: ${bf.fruits}`)
+  if (bf.extras)   parts.push(`Opciones extra: ${bf.extras}`)
+  return parts.join(' | ')
+}
+
+function buildLunchDinnerText(
+  platos: Array<Record<string, string>>,
+  offset = 0
+): string {
+  if (!platos || platos.length === 0) return 'Sin platos en catálogo para esta dieta'
+  const rotated = [...platos.slice(offset), ...platos.slice(0, offset)]
+  const options = rotated.slice(0, 4)
+  return options.map((p, i) => {
+    const label = ['A', 'B', 'C', 'D'][i]
+    const ing = p.ingredients || ''
+    return `Opción ${label}: ${p.name}${ing ? ' (' + ing + ')' : ''}`
+  }).join(' / ')
 }
 
 // ─── INTENT DEFINITIONS ───────────────────────────────────────────────
@@ -49,33 +109,33 @@ Responde SOLO JSON válido, sin markdown, sin backticks:
 }
 
 // ─── FORMATTER SYSTEM PROMPT ──────────────────────────────────────────
-// FIX v12: jerarquía de autoridad explícita — nm_daily_meals es la única fuente de verdad
 const FORMATTER_SYSTEM = `Eres el asistente nutricional personal del paciente.
 
 JERARQUÍA DE FUENTES (OBLIGATORIA — seguir en este orden):
-1. MENÚ SEMANAL DEL PACIENTE (nm_daily_meals): Es la ÚNICA fuente autorizada para decir qué puede o no puede comer. Si el alimento aparece en su menú semanal asignado → está permitido. Si no aparece → NO lo apruebes.
-2. ALIMENTOS PERMITIDOS POR CÓDIGO DE DIETA: Usa solo como referencia secundaria de frecuencia y preparación.
-3. DESCRIPCIÓN DE DIETA: Para explicar en qué consiste su dieta si lo pregunta.
-4. HISTORIAL DE PESO: Solo para preguntas de progreso.
+1. MENÚ SEMANAL GUARDADO (etiquetado "MENÚ GUARDADO"): Datos personalizados por el dietista. Máxima prioridad.
+2. PLANTILLA BASE DE DIETA (etiquetado "PLANTILLA BASE"): Generada automáticamente desde el catálogo de la dieta asignada. Usar cuando no hay menú guardado.
+3. ALIMENTOS PERMITIDOS POR CÓDIGO DE DIETA: Referencia secundaria de frecuencia y preparación.
+4. DESCRIPCIÓN DE DIETA: Para explicar en qué consiste su dieta si lo pregunta.
+5. HISTORIAL DE PESO: Solo para preguntas de progreso.
 
 REGLAS ABSOLUTAS:
-1. NUNCA uses conocimiento nutricional general externo. Si la información no está en los datos RAG proporcionados, di: "No tengo esa información en tu dieta asignada. Consulta con el doctor en tu próxima visita."
-2. Para preguntas sobre alimentos SIEMPRE comprueba primero el MENÚ SEMANAL. Si aparece en alguno de los días → permitido. Si no aparece → no está en su dieta asignada.
+1. Si hay PLANTILLA BASE, úsala como referencia de qué puede comer. NO digas "el doctor no ha configurado tu menú". La plantilla es la dieta real del paciente.
+2. NUNCA uses conocimiento nutricional general externo. Solo los datos RAG.
 3. NUNCA prescribas medicación ni dosis.
 4. NUNCA diagnostiques ni prometas resultados.
 5. Usa tono cercano, profesional y conciso (máximo 3 frases).
 6. Si la pregunta es médica compleja di: "Eso mejor lo hablamos con el doctor en la próxima consulta."
 7. Zero emojis. Texto natural, sin markdown, sin listas.
 8. Responde SIEMPRE en español.
-9. Preséntate como "tu asistente nutricional personal". Sin nombre propio. Sin mencionar clínica ni doctor.
-10. Si el MENÚ SEMANAL está vacío o sin datos, di honestamente: "No encuentro tu dieta asignada en el sistema. Consulta con el doctor."`
+9. Preséntate como "tu asistente nutricional personal". Sin nombre propio.
+10. SOLO di "no encuentro tu dieta" si NO hay ni menú guardado NI plantilla base en los datos RAG.`
 
 // ─── ANTHROPIC API CALL ──────────────────────────────────────────────
 async function callAnthropic(
   model: string,
   systemPrompt: string,
   messages: Array<{role: string, content: string}>,
-  maxTokens: number = 500
+  maxTokens = 500
 ): Promise<{text: string, usage: {input_tokens: number, output_tokens: number}}> {
   const apiKey = Deno.env.get('ANTHROPIC_API_KEY')
   if (!apiKey) throw new Error('ANTHROPIC_API_KEY not configured')
@@ -133,8 +193,6 @@ async function classifyIntent(
 }
 
 // ─── RAG: FETCH RELEVANT DATA ─────────────────────────────────────────
-// FIX v12: nm_daily_meals carga SIEMPRE (bloques 1-3 son siempre activos)
-// FIX v12: usa diet_code (D0x) en lugar del slug diet_type
 async function fetchRAGContext(
   supabase: ReturnType<typeof createClient>,
   intent: string,
@@ -144,7 +202,8 @@ async function fetchRAGContext(
   const ragParts: string[] = []
 
   // ═══════════════════════════════════════════════════════
-  // BLOQUE 1 (SIEMPRE): Dietas asignadas con diet_code D0x
+  // BLOQUE 1 (SIEMPRE): Dietas asignadas
+  // Fallback diet_code: si es NULL, resolver desde DIET_CODE_MAP
   // ═══════════════════════════════════════════════════════
   const { data: dietPlans } = await supabase
     .from('nm_diet_plans')
@@ -152,16 +211,21 @@ async function fetchRAGContext(
     .eq('patient_id', patientId)
     .eq('is_active', true)
 
-  // FIX: usar diet_code (D05, D06...) no diet_type ("metabolica", "antioxidante")
+  // Resolver diet_code con fallback al mapa de slugs
+  const resolvedPlans = (dietPlans || []).map(d => ({
+    ...d,
+    resolved_code: d.diet_code || DIET_CODE_MAP[d.diet_type || ''] || '',
+  }))
+
   const uniqueDietCodes = [...new Set(
-    (dietPlans || []).map(d => d.diet_code).filter(Boolean) as string[]
+    resolvedPlans.map(d => d.resolved_code).filter(Boolean)
   )]
 
-  if (dietPlans && dietPlans.length > 0) {
+  if (resolvedPlans.length > 0) {
     ragParts.push(
       `DIETA ASIGNADA AL PACIENTE:\n` +
-      dietPlans.map(d =>
-        `- ${d.day_of_week}: ${d.diet_name} (código: ${d.diet_code || d.diet_type})`
+      resolvedPlans.map(d =>
+        `- ${d.day_of_week}: ${d.diet_name || d.diet_type} (código: ${d.resolved_code || 'N/A'})`
       ).join('\n')
     )
   } else {
@@ -169,8 +233,8 @@ async function fetchRAGContext(
   }
 
   // ═══════════════════════════════════════════════════════
-  // BLOQUE 2 (SIEMPRE): Menú semanal real — FUENTE PRIMARIA
-  // FIX v12: antes solo se cargaba para 2 intents concretos
+  // BLOQUE 2: Menú semanal
+  // v13 FIX: si nm_daily_meals vacío → generar plantilla desde catálogos
   // ═══════════════════════════════════════════════════════
   const { data: daily } = await supabase
     .from('nm_daily_meals')
@@ -179,27 +243,96 @@ async function fetchRAGContext(
     .eq('is_active', true)
     .order('day_of_week')
 
-  if (daily && daily.length > 0) {
-    const menuLines = daily.map(m => {
+  // Filtrar solo días con contenido real
+  const realMeals = (daily || []).filter(m =>
+    m.breakfast || m.lunch || m.dinner
+  )
+
+  if (realMeals.length > 0) {
+    // ── Caso A: hay menús guardados por el dietista ──
+    const menuLines = realMeals.map(m => {
       const parts = [`DÍA: ${m.day_of_week.toUpperCase()}`]
-      if (m.breakfast)        parts.push(`  DESAYUNO: ${m.breakfast}`)
-      if (m.snack_morning)    parts.push(`  MEDIA MAÑANA: ${m.snack_morning}`)
-      if (m.lunch)            parts.push(`  COMIDA: ${m.lunch}`)
-      if (m.snack_afternoon)  parts.push(`  MERIENDA: ${m.snack_afternoon}`)
-      if (m.dinner)           parts.push(`  CENA: ${m.dinner}`)
+      if (m.breakfast)       parts.push(`  DESAYUNO: ${m.breakfast}`)
+      if (m.snack_morning)   parts.push(`  MEDIA MAÑANA: ${m.snack_morning}`)
+      if (m.lunch)           parts.push(`  COMIDA: ${m.lunch}`)
+      if (m.snack_afternoon) parts.push(`  MERIENDA: ${m.snack_afternoon}`)
+      if (m.dinner)          parts.push(`  CENA: ${m.dinner}`)
       return parts.join('\n')
     })
     ragParts.push(
-      `\nMENÚ SEMANAL ASIGNADO (fuente de verdad — usar para responder qué puede comer):\n` +
+      `\nMENÚ GUARDADO (personalizado por el dietista — máxima prioridad):\n` +
       menuLines.join('\n\n')
     )
+  } else if (uniqueDietCodes.length > 0) {
+    // ── Caso B: nm_daily_meals vacío → generar plantilla desde catálogos ──
+    console.log(`[v13] nm_daily_meals vacío → generando plantilla para códigos: ${uniqueDietCodes.join(', ')}`)
+
+    // Cargar catálogos en paralelo
+    const [mealCatRes, bfCatRes] = await Promise.all([
+      supabase
+        .from('nm_meal_catalog')
+        .select('name, ingredients, diet_codes, meal_time')
+        .overlaps('diet_codes', uniqueDietCodes)
+        .order('name'),
+      supabase
+        .from('nm_breakfast_catalog')
+        .select('name, drinks, bread, toppings, dairy, fruits, extras'),
+    ])
+
+    const mealCatalog   = mealCatRes.data || []
+    const bfCatalog     = bfCatRes.data   || []
+
+    // Generar plantilla por cada día
+    const templateLines: string[] = []
+
+    DAYS_ORDER.forEach(day => {
+      // Encontrar el plan para este día (override específico o 'todos')
+      const plan =
+        resolvedPlans.find(p => p.day_of_week === day) ||
+        resolvedPlans.find(p => p.day_of_week === 'todos')
+      if (!plan) return
+
+      const code = plan.resolved_code
+      if (!code) return
+
+      // Desayuno desde nm_breakfast_catalog
+      const bfName = BREAKFAST_MAP[code]
+      const bfRow  = bfCatalog.find(b => b.name === bfName) as Record<string, string> | undefined
+      const breakfastText = bfRow ? buildBreakfastText(bfRow) : 'Ver opciones de desayuno con el dietista'
+
+      // Comida/Cena desde nm_meal_catalog
+      const platos = mealCatalog.filter(m =>
+        Array.isArray(m.diet_codes) && m.diet_codes.includes(code)
+      ) as Array<Record<string, string>>
+      const half   = Math.ceil(platos.length / 2)
+      const lunchText  = buildLunchDinnerText(platos, 0)
+      const dinnerText = buildLunchDinnerText(platos, half)
+
+      // Snack
+      const snackText = SNACK_MAP[code] || 'Fruta de temporada / Yogur natural'
+
+      templateLines.push(
+        `DÍA: ${day.toUpperCase()} (dieta: ${plan.diet_name || plan.diet_type})\n` +
+        `  DESAYUNO: ${breakfastText}\n` +
+        `  MEDIA MAÑANA: ${snackText}\n` +
+        `  COMIDA: ${lunchText}\n` +
+        `  MERIENDA: ${snackText}\n` +
+        `  CENA: ${dinnerText}`
+      )
+    })
+
+    if (templateLines.length > 0) {
+      ragParts.push(
+        `\nPLANTILLA BASE DE DIETA (generada del catálogo — úsala para responder qué puede comer):\n` +
+        templateLines.join('\n\n')
+      )
+    }
   } else {
-    ragParts.push('\nMENÚ SEMANAL: No hay menú semanal registrado para este paciente.')
+    ragParts.push('\nMENÚ SEMANAL: Sin dieta activa asignada al paciente.')
   }
 
   // ═══════════════════════════════════════════════════════
   // BLOQUE 3 (SIEMPRE): Descripción de dietas del catálogo
-  // FIX v12: ahora usa uniqueDietCodes con códigos D0x correctos
   // ═══════════════════════════════════════════════════════
   if (uniqueDietCodes.length > 0) {
     const { data: dietCatalog } = await supabase
@@ -255,7 +388,6 @@ async function fetchRAGContext(
         }
       }
 
-      // Lista completa de alimentos permitidos para sus dietas (con D0x correctos)
       if (uniqueDietCodes.length > 0) {
         const { data: allowedFoods } = await supabase
           .from('nm_food_knowledge')
@@ -291,7 +423,7 @@ async function fetchRAGContext(
       }
       const { data: breakfasts } = await supabase
         .from('nm_breakfast_catalog')
-        .select('name, code, drinks, bread, toppings, dairy, fruits, extras, restrictions')
+        .select('name, drinks, bread, toppings, dairy, fruits, extras')
         .limit(8)
       if (breakfasts && breakfasts.length > 0) {
         ragParts.push(
@@ -371,7 +503,7 @@ async function fetchRAGContext(
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
 
-  const startTime  = Date.now()
+  const startTime   = Date.now()
   const supabaseUrl = Deno.env.get('SUPABASE_URL')!
   const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
   const supabase    = createClient(supabaseUrl, supabaseKey)
@@ -454,13 +586,13 @@ Deno.serve(async (req: Request) => {
     const classifyStart = Date.now()
     const classification = await classifyIntent(userMessage, patientContext)
     const classifyTime   = Date.now() - classifyStart
-    console.log(`[v12 Phase1] intent=${classification.intent} conf=${classification.confidence} (${classifyTime}ms)`)
+    console.log(`[v13 Phase1] intent=${classification.intent} conf=${classification.confidence} (${classifyTime}ms)`)
 
-    // FASE 2: RAG (nm_daily_meals + D0x codes — siempre activos)
+    // FASE 2: RAG (con template auto-fill cuando nm_daily_meals vacío)
     const ragStart   = Date.now()
     const ragContext = await fetchRAGContext(supabase, classification.intent, classification.entities, patientId)
     const ragTime    = Date.now() - ragStart
-    console.log(`[v12 Phase2] RAG ${ragContext.length} chars (${ragTime}ms)`)
+    console.log(`[v13 Phase2] RAG ${ragContext.length} chars (${ragTime}ms)`)
 
     // FASE 3: Formatear
     const formatStart = Date.now()
@@ -480,7 +612,7 @@ Deno.serve(async (req: Request) => {
     const formattedResponse = formatResult.text || 'Lo siento, no he podido procesar tu consulta.'
     const formatTime        = Date.now() - formatStart
     const totalTime         = Date.now() - startTime
-    console.log(`[v12 Phase3] format ${formatTime}ms | total ${totalTime}ms`)
+    console.log(`[v13 Phase3] format ${formatTime}ms | total ${totalTime}ms`)
 
     if (isDirectCall && conversationId) {
       await supabase.from('nm_chat_messages').insert({
@@ -494,7 +626,7 @@ Deno.serve(async (req: Request) => {
           models:     { classifier: MODEL_CLASSIFIER, formatter: MODEL_FORMATTER },
           timing:     { classify_ms: classifyTime, rag_ms: ragTime, format_ms: formatTime, total_ms: totalTime },
           rag_length: ragContext.length,
-          version:    'v12',
+          version:    'v13',
         }
       })
     }
@@ -518,20 +650,20 @@ Deno.serve(async (req: Request) => {
         },
         timing: { classify_ms: classifyTime, rag_ms: ragTime, format_ms: formatTime, total_ms: totalTime },
         models: { classifier: MODEL_CLASSIFIER, formatter: MODEL_FORMATTER },
-        version: 'v12',
+        version: 'v13',
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )
 
   } catch (error) {
-    console.error('[nm-chat v12] Fatal:', error)
+    console.error('[nm-chat v13] Fatal:', error)
     return new Response(
       JSON.stringify({
         content: 'Lo siento, ha habido un error. Inténtalo de nuevo.',
         message: 'Lo siento, ha habido un error. Inténtalo de nuevo.',
         error:   String(error),
         timing:  { total_ms: Date.now() - startTime },
-        version: 'v12',
+        version: 'v13',
       }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )

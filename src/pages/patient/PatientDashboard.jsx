@@ -208,13 +208,13 @@ export default function PatientDashboard() {
         </div>
       )}
       {todayDiet && (
-        <div className="mb-4 rounded-[22px] overflow-hidden" style={{
+        <div className="mb-2 rounded-[22px] overflow-hidden" style={{
           background: tc.heroDietGradient(todayDiet.color, todayDiet.bg),
           border: `1px solid ${todayDiet.color}${tc.isDark ? '25' : '35'}`,
           boxShadow: tc.heroDietShadow(todayDiet.color),
         }}>
-          {/* Cabecera dieta */}
-          <div className="px-4 py-3.5" style={{ borderBottom: hasTodayMeals ? `1px solid ${todayDiet.color}${tc.isDark ? '15' : '25'}` : 'none' }}>
+          {/* Cabecera dieta — siempre visible si hay plan asignado */}
+          <div className="px-4 py-3.5">
             <p className="text-[10px] font-bold uppercase tracking-[0.14em] mb-1.5" style={{ color: todayDiet.color }}>
               {DAY_LABELS[today]} — Tu dieta hoy
             </p>
@@ -228,43 +228,57 @@ export default function PatientDashboard() {
               </div>
             </div>
           </div>
+        </div>
+      )}
 
-          {/* Comidas del día */}
-          {!hasTodayMeals && (
-            <div className="px-4 py-3">
-              <p className="text-[11px] font-medium text-center" style={{ color: tc.textFaint }}>
-                📋 Menú del día pendiente de configuración
-              </p>
-            </div>
-          )}
-          {hasTodayMeals && (
-            <div className="px-4 py-3 space-y-4">
-              {['breakfast', 'snack_morning', 'lunch', 'snack_afternoon', 'dinner'].map(key => {
-                const value = todayMeals[key]
-                if (!value) return null
-                const cfg = MEAL_CONFIG[key]
-                const Icon = cfg.icon
-                return (
-                  <div key={key}>
-                    <div className="flex items-center gap-2 mb-2">
-                      <div className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0"
-                        style={{ background: cfg.bg, border: `1px solid ${cfg.color}30` }}>
-                        <Icon size={13} style={{ color: cfg.color }} />
-                      </div>
-                      <p className="text-[11px] font-bold uppercase tracking-wider" style={{ color: cfg.color }}>{cfg.label}</p>
+      {/* ═══ Comidas del día — independiente del plan, visible si hay meals ═══ */}
+      {hasTodayMeals && (
+        <div className="mb-4 rounded-[22px] overflow-hidden" style={{
+          background: todayDiet
+            ? tc.heroDietGradient(todayDiet.color, todayDiet.bg)
+            : tc.cardBg,
+          border: todayDiet
+            ? `1px solid ${todayDiet.color}${tc.isDark ? '25' : '35'}`
+            : tc.cardBorder,
+          boxShadow: todayDiet ? tc.heroDietShadow(todayDiet.color) : tc.cardShadow,
+        }}>
+          <div className="px-4 py-3 space-y-4"
+            style={{ borderTop: todayDiet ? `1px solid ${todayDiet.color}${tc.isDark ? '15' : '25'}` : `1px solid ${tc.divider}` }}>
+            {['breakfast', 'snack_morning', 'lunch', 'snack_afternoon', 'dinner'].map(key => {
+              const value = todayMeals[key]
+              if (!value) return null
+              const cfg = MEAL_CONFIG[key]
+              const Icon = cfg.icon
+              return (
+                <div key={key}>
+                  <div className="flex items-center gap-2 mb-2">
+                    <div className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0"
+                      style={{ background: cfg.bg, border: `1px solid ${cfg.color}30` }}>
+                      <Icon size={13} style={{ color: cfg.color }} />
                     </div>
-                    <div className="ml-9"><MealContent text={value} tc={tc} /></div>
+                    <p className="text-[11px] font-bold uppercase tracking-wider" style={{ color: cfg.color }}>{cfg.label}</p>
                   </div>
-                )
-              })}
-              {todayMeals.notes && (
-                <p className="text-[11px] italic font-medium pt-1.5"
-                  style={{ color: tc.textMuted, borderTop: `1px solid ${tc.divider}` }}>
-                  💡 {todayMeals.notes}
-                </p>
-              )}
-            </div>
-          )}
+                  <div className="ml-9"><MealContent text={value} tc={tc} /></div>
+                </div>
+              )
+            })}
+            {todayMeals.notes && (
+              <p className="text-[11px] italic font-medium pt-1.5"
+                style={{ color: tc.textMuted, borderTop: `1px solid ${tc.divider}` }}>
+                💡 {todayMeals.notes}
+              </p>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Aviso pendiente: hay plan pero aún sin menú del día */}
+      {todayDiet && !hasTodayMeals && (
+        <div className="mb-4 px-4 py-3 rounded-[18px]"
+          style={{ background: tc.cardInsetBg, border: tc.cardInsetBorder }}>
+          <p className="text-[11px] font-medium text-center" style={{ color: tc.textFaint }}>
+            📋 Menú del día pendiente de configuración
+          </p>
         </div>
       )}
 

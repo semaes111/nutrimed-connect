@@ -68,15 +68,27 @@ export default function MealsTab({ patient, professionalId }) {
     const plan = getDietForDay(day)
     if (!plan) return []
     // Usar diet_code directamente (columna añadida en migración v12)
-    // Fallback al mapeo manual si diet_code no está disponible aún
+    // Fallback al mapeo — slugs canónicos de dietas_validas (fuente de verdad)
     const dietCodeMap = {
-      'progresiva-ig-medio': 'D01', 'progresiva-ig-bajo': 'D02',
-      'antiinflamatoria-ig-bajo': 'D03', 'keto-microbiota': 'D04',
-      'antioxidante': 'D05', 'metabolica-antioxidante': 'D06',
-      'rescate-proteica': 'D07', 'rescate-proteica-v2': 'D08',
-      'rescate-proteica-v3': 'D09', 'progresiva-intermedio-integral': 'D10',
-      'rescate': 'D07', 'metabolica': 'D06', 'antiinflamatoria': 'D03',
-      'ig-bajo': 'D02', 'ig-medio': 'D01', 'intermedio-integral': 'D10',
+      // Slugs canónicos actuales en dietas_validas:
+      'metabolica':         'D06',
+      'rescate':            'D07',
+      'antioxidante':       'D05',
+      'antiinflamatoria':   'D03',
+      'keto-microbiota':    'D04',
+      'ig-bajo':            'D02',
+      'ig-medio':           'D01',
+      'intermedio-integral':'D10',
+      'embarazo':           'D01', // dieta embarazo → catálogo más permisivo (D01)
+      // Aliases legacy (compatibilidad hacia atrás):
+      'metabolica-antioxidante':       'D06',
+      'rescate-proteica':              'D07',
+      'rescate-proteica-v2':           'D08',
+      'rescate-proteica-v3':           'D09',
+      'antiinflamatoria-ig-bajo':      'D03',
+      'progresiva-ig-bajo':            'D02',
+      'progresiva-ig-medio':           'D01',
+      'progresiva-intermedio-integral':'D10',
     }
     const code = plan.diet_code || dietCodeMap[plan.diet_type || ''] || ''
     if (mealType === 'breakfast') {

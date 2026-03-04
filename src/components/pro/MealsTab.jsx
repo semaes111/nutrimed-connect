@@ -227,7 +227,7 @@ export default function MealsTab({ patient, professionalId }) {
             >
               <div className="flex items-center gap-3">
                 <div className="w-8 h-8 rounded-lg flex items-center justify-center text-sm font-bold"
-                  style={cfg ? { background: cfg.bg, color: cfg.color } : { background: '#F3F4F6', color: '#9CA3AF' }}>
+                  style={cfg ? { background: cfg.bg, color: cfg.color } : { background: 'var(--surface-card)', color: 'var(--text-secondary)' }}>
                   {DAY_LABELS[day]?.charAt(0)}
                 </div>
                 <div className="text-left">

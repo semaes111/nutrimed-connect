@@ -41,7 +41,7 @@ export default function MedsView() {
         <div className="flex justify-center py-20"><div className="loader" /></div>
       ) : meds.length === 0 ? (
         <div className="text-center py-16 rounded-[20px]" style={NEU_CARD}>
-          <Pill size={40} className="mx-auto mb-3" style={{ color: tc.isDark ? '#333A45' : '#C8D3E8' }} />
+          <Pill size={40} className="mx-auto mb-3" style={{ color: tc.textFaint }} />
           <p className="text-sm font-medium" style={{ color: tc.textDimmed }}>No tienes medicación asignada</p>
         </div>
       ) : (

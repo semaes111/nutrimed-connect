@@ -441,6 +441,44 @@ html, html * {
 }
 
 /* ======================================================================
+   GRAY TEXT NORMALIZATION — contraste garantizado en ambos temas
+   ──────────────────────────────────────────────────────────────────────
+   DARK:  grises oscuros (#333A45 / #4A5568 / #64748B) → tonos brillantes
+   LIGHT: textos claros (#E2E8F0 / #CBD5E1 / #94A3B8)  → tonos oscuros
+   ====================================================================== */
+
+/* ── DARK MODE: subir luminosidad de todos los grises ───────────── */
+[data-theme="dark"] .text-\[\#333A45\]  { color: #6B7A8D !important; }
+[data-theme="dark"] .text-\[\#4A5568\]  { color: #8B9CB0 !important; }
+[data-theme="dark"] .text-\[\#64748B\]  { color: #9FB0C4 !important; }
+[data-theme="dark"] .text-\[\#94A3B8\]  { color: #B8C6D4 !important; }
+[data-theme="dark"] .text-\[\#CBD5E1\]  { color: #D8E2EE !important; }
+[data-theme="dark"] .text-\[\#E2E8F0\]  { color: #EDF1F9 !important; }
+[data-theme="dark"] .text-\[\#F1F5F9\]  { color: #F4F7FC !important; }
+[data-theme="dark"] .text-\[\#2A2F38\]  { color: #7A8898 !important; }
+[data-theme="dark"] .text-gray-300,
+[data-theme="dark"] .text-slate-300     { color: #D8E2EE !important; }
+[data-theme="dark"] .text-gray-400,
+[data-theme="dark"] .text-slate-400     { color: #B8C6D4 !important; }
+[data-theme="dark"] .text-gray-500,
+[data-theme="dark"] .text-slate-500     { color: #9FB0C4 !important; }
+[data-theme="dark"] .text-gray-700,
+[data-theme="dark"] .text-slate-700     { color: #C8D4E0 !important; }
+[data-theme="dark"] .text-gray-900,
+[data-theme="dark"] .text-slate-900     { color: #EEF2F8 !important; }
+
+/* ── LIGHT MODE: bajar luminosidad de textos claros ─────────────── */
+[data-theme="light"] .text-\[\#F1F5F9\] { color: #1E293B !important; }
+[data-theme="light"] .text-\[\#E2E8F0\] { color: #1E293B !important; }
+[data-theme="light"] .text-\[\#CBD5E1\] { color: #334155 !important; }
+[data-theme="light"] .text-\[\#94A3B8\] { color: #475569 !important; }
+[data-theme="light"] .text-\[\#4A5568\] { color: #1E293B !important; }
+[data-theme="light"] .text-gray-300,
+[data-theme="light"] .text-slate-300    { color: #374151 !important; }
+[data-theme="light"] .text-gray-400,
+[data-theme="light"] .text-slate-400    { color: #4B5568 !important; }
+
+/* ======================================================================
    SELECTION & FOCUS
    ====================================================================== */
 ::selection { background: rgba(45,212,191,0.22); color: #F0FDFA; }

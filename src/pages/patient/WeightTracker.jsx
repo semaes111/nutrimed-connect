@@ -147,7 +147,7 @@ export default function WeightTracker() {
         </div>
       ) : (
         <div className="text-center py-10 rounded-[20px]" style={NEU_CARD}>
-          <Scale size={32} className="mx-auto mb-3" style={{ color: tc.isDark ? '#333A45' : '#C8D3E8' }} />
+          <Scale size={32} className="mx-auto mb-3" style={{ color: tc.textFaint }} />
           <p className="text-sm font-medium" style={{ color: tc.textDimmed }}>
             Registra tu primer peso para ver la gráfica
           </p>

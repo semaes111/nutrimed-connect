@@ -16,10 +16,10 @@ export function usePageTheme() {
   /* ── Texto ─────────────────────────────────────────────────────────── */
   const textPrimary   = isDark ? '#EDF0F7' : '#0F172A'   // títulos / valores
   const textBody      = isDark ? '#C4CDD8' : '#1E293B'   // cuerpo de dieta (más oscuro en dark)
-  const textSecondary = isDark ? '#94A3B8' : '#374151'   // subtítulos
-  const textMuted     = isDark ? '#64748B' : '#4B5568'   // labels (en light ya es legible)
-  const textDimmed    = isDark ? '#4A5568' : '#6B7280'   // notas, fechas
-  const textFaint     = isDark ? '#333A45' : '#94A3B8'   // "Sin menú" / placeholders
+  const textSecondary = isDark ? '#A8BAC8' : '#374151'   // subtítulos
+  const textMuted     = isDark ? '#8A9CB0' : '#4B5568'   // labels (en light ya es legible)
+  const textDimmed    = isDark ? '#6B7A8D' : '#6B7280'   // notas, fechas
+  const textFaint     = isDark ? '#526070' : '#6B7280'   // "Sin menú" / placeholders
 
   /* ── Accents/Marca ─────────────────────────────────────────────────── */
   const textAccent    = isDark ? '#2DD4BF' : '#0D9488'

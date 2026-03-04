@@ -199,6 +199,14 @@ export default function PatientDashboard() {
     <PatientLayout>
 
       {/* ═══ HERO — Dieta de hoy ═══ */}
+      {!todayDiet && (
+        <div className="mb-4 rounded-[22px] p-5 text-center"
+          style={{ background: tc.cardBg, border: tc.cardBorder }}>
+          <p className="text-2xl mb-2">🥗</p>
+          <p className="text-sm font-semibold" style={{ color: tc.textPrimary }}>Plan nutricional en preparación</p>
+          <p className="text-xs mt-1" style={{ color: tc.textMuted }}>Tu dietista está configurando tu plan. Vuelve pronto.</p>
+        </div>
+      )}
       {todayDiet && (
         <div className="mb-4 rounded-[22px] overflow-hidden" style={{
           background: tc.heroDietGradient(todayDiet.color, todayDiet.bg),
@@ -222,6 +230,13 @@ export default function PatientDashboard() {
           </div>
 
           {/* Comidas del día */}
+          {!hasTodayMeals && (
+            <div className="px-4 py-3">
+              <p className="text-[11px] font-medium text-center" style={{ color: tc.textFaint }}>
+                📋 Menú del día pendiente de configuración
+              </p>
+            </div>
+          )}
           {hasTodayMeals && (
             <div className="px-4 py-3 space-y-4">
               {['breakfast', 'snack_morning', 'lunch', 'snack_afternoon', 'dinner'].map(key => {

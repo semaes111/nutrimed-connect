@@ -25,24 +25,35 @@ export default function MealsTab({ patient, professionalId }) {
   const [mealCatalog, setMealCatalog] = useState([])
   const [breakfastCatalog, setBreakfastCatalog] = useState([])
   const [expandedDay, setExpandedDay] = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState(null)
   const [saving, setSaving] = useState(null)
   const [saved, setSaved] = useState({})
   const [suggestingFor, setSuggestingFor] = useState(null)
 
   const loadAll = useCallback(async () => {
     if (!patient?.id) return
+    setLoading(true)
+    setLoadError(null)
     const [mealsRes, plansRes, mealCatRes, bfastRes] = await Promise.all([
       supabase.from('nm_daily_meals').select('*').eq('patient_id', patient.id).eq('is_active', true),
       supabase.from('nm_diet_plans').select('*').eq('patient_id', patient.id).eq('is_active', true),
       supabase.from('nm_meal_catalog').select('*').order('name'),
       supabase.from('nm_breakfast_catalog').select('*'),
     ])
+    if (mealsRes.error || plansRes.error || mealCatRes.error || bfastRes.error) {
+      const err = mealsRes.error || plansRes.error || mealCatRes.error || bfastRes.error
+      setLoadError(err.message || 'Error al cargar datos')
+      setLoading(false)
+      return
+    }
     const mealsMap = {}
     ;(mealsRes.data || []).forEach(m => { mealsMap[m.day_of_week] = m })
     setMeals(mealsMap)
     setDietPlans(plansRes.data || [])
     setMealCatalog(mealCatRes.data || [])
     setBreakfastCatalog(bfastRes.data || [])
+    setLoading(false)
   }, [patient?.id])
 
   useEffect(() => { loadAll() }, [loadAll])
@@ -56,7 +67,8 @@ export default function MealsTab({ patient, professionalId }) {
   function getMealSuggestions(day, mealType) {
     const plan = getDietForDay(day)
     if (!plan) return []
-    const dietSlug = plan.diet_type || ''
+    // Usar diet_code directamente (columna añadida en migración v12)
+    // Fallback al mapeo manual si diet_code no está disponible aún
     const dietCodeMap = {
       'progresiva-ig-medio': 'D01', 'progresiva-ig-bajo': 'D02',
       'antiinflamatoria-ig-bajo': 'D03', 'keto-microbiota': 'D04',
@@ -64,10 +76,9 @@ export default function MealsTab({ patient, professionalId }) {
       'rescate-proteica': 'D07', 'rescate-proteica-v2': 'D08',
       'rescate-proteica-v3': 'D09', 'progresiva-intermedio-integral': 'D10',
       'rescate': 'D07', 'metabolica': 'D06', 'antiinflamatoria': 'D03',
-      'ig-bajo': 'D02', 'ig-medio': 'D01',
-      'intermedio-integral': 'D10',
+      'ig-bajo': 'D02', 'ig-medio': 'D01', 'intermedio-integral': 'D10',
     }
-    const code = dietCodeMap[dietSlug] || ''
+    const code = plan.diet_code || dietCodeMap[plan.diet_type || ''] || ''
     if (mealType === 'breakfast') {
       return breakfastCatalog.map(b => ({
         id: b.id,
@@ -161,17 +172,43 @@ export default function MealsTab({ patient, professionalId }) {
         </p>
       </div>
 
-      {/* Quick fill hint */}
-      {filledDays.length === 0 && (
-        <div className="card !p-3 bg-amber-50 border border-amber-200">
-          <p className="text-xs text-amber-700">
-            Configura el menú de cada día. Puedes usar las sugerencias automáticas basadas en la dieta asignada.
+      {/* Loading */}
+      {loading && (
+        <div className="flex justify-center py-10">
+          <Loader2 size={22} className="animate-spin text-[var(--color-brand)]" />
+        </div>
+      )}
+
+      {/* Error */}
+      {!loading && loadError && (
+        <div className="card !p-3 bg-red-50 border border-red-200">
+          <p className="text-xs text-red-700 font-medium">⚠️ Error cargando datos: {loadError}</p>
+          <button onClick={loadAll} className="text-xs text-red-600 underline mt-1">Reintentar</button>
+        </div>
+      )}
+
+      {/* Sin dieta asignada */}
+      {!loading && !loadError && dietPlans.length === 0 && (
+        <div className="card !p-4 bg-amber-50 border border-amber-200 text-center">
+          <p className="text-sm font-semibold text-amber-800 mb-1">Sin dieta base asignada</p>
+          <p className="text-xs text-amber-600">
+            Este paciente aún no tiene una dieta asignada. Ve a la pestaña{' '}
+            <strong>Dietas</strong> para asignar un plan nutricional primero.
+          </p>
+        </div>
+      )}
+
+      {/* Quick fill hint — solo cuando hay dieta asignada pero aún sin menús */}
+      {!loading && !loadError && dietPlans.length > 0 && filledDays.length === 0 && (
+        <div className="card !p-3 bg-blue-50 border border-blue-200">
+          <p className="text-xs text-blue-700">
+            ✅ Dieta asignada. Ahora configura el menú de cada día usando las sugerencias automáticas.
           </p>
         </div>
       )}
 
       {/* Day cards */}
-      {DAYS_ORDER.map(day => {
+      {!loading && !loadError && dietPlans.length > 0 && DAYS_ORDER.map(day => {
         const m = meals[day] || {}
         const plan = getDietForDay(day)
         const cfg = plan ? getDietConfig(plan.diet_type) : null

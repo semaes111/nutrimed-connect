@@ -488,3 +488,32 @@ html, html * {
   outline-offset: 2px; border-radius: 8px;
 }
 @media (prefers-reduced-motion: no-preference) { html { scroll-behavior: smooth; } }
+
+/* ======================================================================
+   LIGHT MODE — fondos oscuros hardcodeados → superficies claras
+   ──────────────────────────────────────────────────────────────────────
+   ProDashboard / ProPatientDetail / ProPatientForm usan bg-[#1F232B],
+   bg-[#252A33] y bg-[#262B34] que en light mode generan paneles oscuros
+   → texto oscuro sobre fondo oscuro → ilegible.
+   ====================================================================== */
+
+/* Paneles / cards oscuros */
+[data-theme="light"] .bg-\[\#1F232B\]    { background: var(--surface-card)   !important; }
+[data-theme="light"] .bg-\[\#252A33\]    { background: var(--surface-card-2) !important; }
+[data-theme="light"] .bg-\[\#262B34\]    { background: var(--surface-raised) !important; }
+
+/* Filter buttons inactivos (ProDashboard) — variante rounded-lg */
+[data-theme="light"] .bg-\[\#252A33\].rounded-lg {
+  background: var(--surface-raised) !important;
+  border: 1px solid var(--border-subtle);
+}
+
+/* Progress bar track (ProPatientForm / ProPatientDetail) */
+[data-theme="light"] .bg-\[\#252A33\].rounded-full {
+  background: rgba(0,0,0,0.09) !important;
+}
+
+/* Texto claro faltante — refuerzo con mayor especificidad */
+[data-theme="light"] .text-\[\#F1F5F9\]  { color: #0F172A !important; }
+[data-theme="light"] .text-\[\#E2E8F0\]  { color: #0F172A !important; }
+[data-theme="light"] .text-\[\#CBD5E1\]  { color: #1E293B !important; }

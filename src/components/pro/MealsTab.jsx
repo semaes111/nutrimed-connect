@@ -1,102 +1,28 @@
 import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '../../lib/supabase'
-import { DAYS_ORDER, DAY_LABELS, getDietConfig } from '../../lib/dietConfig'
+import { DAYS_ORDER, DAY_LABELS, getDietConfig, DIET_CODE_MAP, BREAKFAST_MAP, buildMealsFromTemplates } from '../../lib/dietConfig'
 import { UtensilsCrossed, Coffee, Sun, Moon, Cookie, Save, Check, ChevronDown, ChevronUp, Sparkles, Loader2, Wand2 } from 'lucide-react'
 
 const MEAL_ICONS = {
-  breakfast: Coffee,
-  lunch: Sun,
-  dinner: Moon,
-  snack_morning: Cookie,
-  snack_afternoon: Cookie,
+  breakfast: Coffee, lunch: Sun, dinner: Moon,
+  snack_morning: Cookie, snack_afternoon: Cookie,
 }
-
 const MEAL_LABELS = {
-  breakfast: 'Desayuno',
-  lunch: 'Comida',
-  dinner: 'Cena',
-  snack_morning: 'Media mañana',
-  snack_afternoon: 'Merienda',
-}
-
-/* ── Mapeo diet_code → nombre en nm_breakfast_catalog ───────────── */
-const BREAKFAST_CATALOG_MAP = {
-  'D01': 'Completo IG Intermedio',
-  'D02': 'Completo IG Bajo',
-  'D03': 'Acelerado IG Bajo',
-  'D04': 'Acelerado IG Bajo',
-  'D05': 'Completo IG Bajo',
-  'D06': 'Acelerado IG Bajo',
-  'D07': 'Acelerado Rescate',
-  'D08': 'Acelerado Rescate',
-  'D09': 'Acelerado Rescate',
-  'D10': 'Completo IG Intermedio',
-}
-
-/* ── Generadores de plantillas ───────────────────────────────────── */
-function generateBreakfastTemplate(bfRow) {
-  if (!bfRow) return ''
-  const lines = []
-  if (bfRow.drinks)   lines.push(`☕ Bebidas: ${bfRow.drinks}`)
-  if (bfRow.bread)    lines.push(`🍞 Pan: ${bfRow.bread}`)
-  if (bfRow.toppings) lines.push(`🧀 Complementos tostada:\n   ${bfRow.toppings}`)
-  if (bfRow.dairy)    lines.push(`🥛 Lácteos: ${bfRow.dairy}`)
-  if (bfRow.fruits)   lines.push(`🍎 Frutas: ${bfRow.fruits}`)
-  if (bfRow.extras)   lines.push(`➕ Opciones extra:\n   ${bfRow.extras}`)
-  return `═══ BASE FIJA ═══\n${lines.join('\n')}`
-}
-
-function generateLunchDinnerTemplate(platos) {
-  if (!platos || platos.length === 0) return ''
-  const options = platos.slice(0, 4)
-  const labels = ['OPCIÓN A', 'OPCIÓN B', 'OPCIÓN C', 'OPCIÓN D']
-  return options.map((p, i) => {
-    const text = p.ingredients ? `🍽️ ${p.name}\n   ${p.ingredients}` : `🍽️ ${p.name}`
-    return `═══ ${labels[i]} ═══\n${text}`
-  }).join('\n\n')
-}
-
-function generateSnackTemplate(dietCode, bfRow) {
-  // Snacks basados en el tipo de dieta
-  const snacksByCode = {
-    'D01': '🍎 Fruta de temporada (manzana, pera, naranja, kiwi)\n🥛 Yogur natural sin azúcar + 1 puñado frutos secos\n🧀 Quesito + 3-4 nueces',
-    'D02': '🍎 Fruta baja en IG (fresas, arándanos, kiwi, manzana)\n🥛 Yogur natural sin azúcar + semillas chía\n🥑 1/4 aguacate con limón',
-    'D03': '🍎 Fruta: manzana, kiwi o frutos rojos\n🥛 Yogur natural sin azúcar\n🥚 Huevo duro + pepino',
-    'D04': '🥑 1/4 aguacate + nueces\n🧀 Queso curado + jamón serrano\n🥚 Huevo duro + aceitunas',
-    'D05': '🍇 Frutos rojos (arándanos, frambuesas, fresas)\n🥛 Yogur natural + semillas\n🥜 Almendras crudas (20g)',
-    'D06': '🥑 1/4 aguacate\n🥚 Huevo duro\n🧀 Queso fresco + pepino',
-    'D07': '🥛 Yogur natural sin azúcar\n🍎 Kiwi o piña x2\n🥚 Huevo duro',
-    'D08': '🥛 Yogur natural sin azúcar\n🥚 Huevo duro\n🥒 Pepino + 3 nueces',
-    'D09': '🥛 Yogur natural sin azúcar\n🥚 Huevo duro',
-    'D10': '🍎 Fruta integral (manzana, pera, naranja)\n🥛 Yogur natural + 1 cdta chía\n🥜 Almendras (20g) + fruta',
-  }
-  return snacksByCode[dietCode] || '🍎 Fruta de temporada\n🥛 Yogur natural sin azúcar\n🥜 Puñado de frutos secos (20g)'
-}
-
-function buildDietCodeMap() {
-  return {
-    'metabolica': 'D06', 'rescate': 'D07', 'antioxidante': 'D05',
-    'antiinflamatoria': 'D03', 'keto-microbiota': 'D04',
-    'ig-bajo': 'D02', 'ig-medio': 'D01', 'intermedio-integral': 'D10',
-    'embarazo': 'D01', 'metabolica-antioxidante': 'D06',
-    'rescate-proteica': 'D07', 'rescate-proteica-v2': 'D08',
-    'rescate-proteica-v3': 'D09', 'antiinflamatoria-ig-bajo': 'D03',
-    'progresiva-ig-bajo': 'D02', 'progresiva-ig-medio': 'D01',
-    'progresiva-intermedio-integral': 'D10',
-  }
+  breakfast: 'Desayuno', lunch: 'Comida', dinner: 'Cena',
+  snack_morning: 'Media mañana', snack_afternoon: 'Merienda',
 }
 
 export default function MealsTab({ patient, professionalId }) {
-  const [meals, setMeals] = useState({})
-  const [dietPlans, setDietPlans] = useState([])
-  const [mealCatalog, setMealCatalog] = useState([])
+  const [meals, setMeals]               = useState({})
+  const [dietPlans, setDietPlans]       = useState([])
+  const [mealCatalog, setMealCatalog]   = useState([])
   const [breakfastCatalog, setBreakfastCatalog] = useState([])
-  const [expandedDay, setExpandedDay] = useState(null)
-  const [loading, setLoading] = useState(true)
-  const [loadError, setLoadError] = useState(null)
-  const [saving, setSaving] = useState(null)
-  const [saved, setSaved] = useState({})
-  const [autoFilled, setAutoFilled] = useState({})
+  const [expandedDay, setExpandedDay]   = useState(null)
+  const [loading, setLoading]           = useState(true)
+  const [loadError, setLoadError]       = useState(null)
+  const [saving, setSaving]             = useState(null)
+  const [saved, setSaved]               = useState({})
+  const [autoFilled, setAutoFilled]     = useState({})
   const [suggestingFor, setSuggestingFor] = useState(null)
 
   const loadAll = useCallback(async () => {
@@ -115,54 +41,17 @@ export default function MealsTab({ patient, professionalId }) {
       setLoading(false)
       return
     }
-    const plans     = plansRes.data   || []
-    const catalog   = mealCatRes.data || []
-    const bfCatalog = bfastRes.data   || []
-    const dietCodeMap = buildDietCodeMap()
-
-    /* ── Construir mealsMap desde BD ─────────────────────────────── */
     const savedMealsMap = {}
     ;(mealsRes.data || []).forEach(m => { savedMealsMap[m.day_of_week] = m })
 
-    /* ── Auto-fill para días SIN datos guardados ─────────────────── */
-    const autoFillMap = {}
-    const mealsMap = { ...savedMealsMap }
-
-    DAYS_ORDER.forEach(day => {
-      if (savedMealsMap[day]) return // ya tiene datos → no tocar
-
-      // Obtener el plan para este día
-      const plan = plans.find(p => p.day_of_week === day) || plans.find(p => p.day_of_week === 'todos')
-      if (!plan) return // sin dieta asignada
-
-      const code = plan.diet_code || dietCodeMap[plan.diet_type || ''] || ''
-      if (!code) return
-
-      // Generar breakfast template
-      const bfName = BREAKFAST_CATALOG_MAP[code]
-      const bfRow  = bfCatalog.find(b => b.name === bfName)
-      const breakfast = generateBreakfastTemplate(bfRow)
-
-      // Generar lunch/dinner templates desde nm_meal_catalog
-      const platos = catalog.filter(m => m.diet_codes && m.diet_codes.includes(code))
-      const lunch  = generateLunchDinnerTemplate(platos)
-      const dinner = generateLunchDinnerTemplate(
-        // Rotar platos para cena (distintos de comida)
-        [...platos.slice(Math.ceil(platos.length / 2)), ...platos.slice(0, Math.ceil(platos.length / 2))]
-      )
-
-      // Snacks desde plantillas
-      const snack = generateSnackTemplate(code, bfRow)
-
-      mealsMap[day] = { day_of_week: day, breakfast, lunch, dinner, snack_morning: snack, snack_afternoon: snack }
-      autoFillMap[day] = true // marcar como auto-generado (sin guardar)
-    })
-
+    const { mealsMap, autoFilled: af } = buildMealsFromTemplates(
+      plansRes.data || [], savedMealsMap, mealCatRes.data || [], bfastRes.data || []
+    )
     setMeals(mealsMap)
-    setAutoFilled(autoFillMap)
-    setDietPlans(plans)
-    setMealCatalog(catalog)
-    setBreakfastCatalog(bfCatalog)
+    setAutoFilled(af)
+    setDietPlans(plansRes.data || [])
+    setMealCatalog(mealCatRes.data || [])
+    setBreakfastCatalog(bfastRes.data || [])
     setLoading(false)
   }, [patient?.id])
 
@@ -177,30 +66,7 @@ export default function MealsTab({ patient, professionalId }) {
   function getMealSuggestions(day, mealType) {
     const plan = getDietForDay(day)
     if (!plan) return []
-    // Usar diet_code directamente (columna añadida en migración v12)
-    // Fallback al mapeo — slugs canónicos de dietas_validas (fuente de verdad)
-    const dietCodeMap = {
-      // Slugs canónicos actuales en dietas_validas:
-      'metabolica':         'D06',
-      'rescate':            'D07',
-      'antioxidante':       'D05',
-      'antiinflamatoria':   'D03',
-      'keto-microbiota':    'D04',
-      'ig-bajo':            'D02',
-      'ig-medio':           'D01',
-      'intermedio-integral':'D10',
-      'embarazo':           'D01', // dieta embarazo → catálogo más permisivo (D01)
-      // Aliases legacy (compatibilidad hacia atrás):
-      'metabolica-antioxidante':       'D06',
-      'rescate-proteica':              'D07',
-      'rescate-proteica-v2':           'D08',
-      'rescate-proteica-v3':           'D09',
-      'antiinflamatoria-ig-bajo':      'D03',
-      'progresiva-ig-bajo':            'D02',
-      'progresiva-ig-medio':           'D01',
-      'progresiva-intermedio-integral':'D10',
-    }
-    const code = plan.diet_code || dietCodeMap[plan.diet_type || ''] || ''
+    const code = plan.diet_code || DIET_CODE_MAP[plan.diet_type || ''] || ''
     if (mealType === 'breakfast') {
       return breakfastCatalog.map(b => ({
         id: b.id,

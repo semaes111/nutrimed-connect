@@ -2,7 +2,7 @@ import 'jsr:@supabase/functions-js/edge-runtime.d.ts'
 import { createClient } from 'npm:@supabase/supabase-js@2'
 
 // ═══════════════════════════════════════════════════════════════════════
-// nm-chat v14 — Doctor notes in RAG context
+// nm-chat v15 — Inject today's weekday (Europe/Madrid) into formatter context
 // Fix: cuando nm_daily_meals vacío, genera plantilla desde nm_meal_catalog
 //      + nm_breakfast_catalog igual que el frontend React
 // ═══════════════════════════════════════════════════════════════════════
@@ -598,21 +598,25 @@ Deno.serve(async (req: Request) => {
     const classifyStart = Date.now()
     const classification = await classifyIntent(userMessage, patientContext)
     const classifyTime   = Date.now() - classifyStart
-    console.log(`[v14 Phase1] intent=${classification.intent} conf=${classification.confidence} (${classifyTime}ms)`)
+    console.log(`[v15 Phase1] intent=${classification.intent} conf=${classification.confidence} (${classifyTime}ms)`)
 
     // FASE 2: RAG (con template auto-fill cuando nm_daily_meals vacío)
     const ragStart   = Date.now()
     const ragContext = await fetchRAGContext(supabase, classification.intent, classification.entities, patientId)
     const ragTime    = Date.now() - ragStart
-    console.log(`[v14 Phase2] RAG ${ragContext.length} chars (${ragTime}ms)`)
+    console.log(`[v15 Phase2] RAG ${ragContext.length} chars (${ragTime}ms)`)
 
     // FASE 3: Formatear
     const formatStart = Date.now()
+    const todayName = new Date().toLocaleDateString('es-ES', {
+      weekday: 'long', timeZone: 'Europe/Madrid'
+    }).toLowerCase()
     const formatterMessages = [
       ...chatHistory,
       {
         role: 'user' as const,
         content:
+          `[HOY ES: ${todayName.toUpperCase()}]\n` +
           `[CONTEXTO PACIENTE: ${patientContext}]\n` +
           `[INTENCIÓN DETECTADA: ${classification.intent}]\n` +
           `[DATOS RAG — úsalos como única fuente de verdad]:\n${ragContext}\n\n` +
@@ -624,7 +628,7 @@ Deno.serve(async (req: Request) => {
     const formattedResponse = formatResult.text || 'Lo siento, no he podido procesar tu consulta.'
     const formatTime        = Date.now() - formatStart
     const totalTime         = Date.now() - startTime
-    console.log(`[v14 Phase3] format ${formatTime}ms | total ${totalTime}ms`)
+    console.log(`[v15 Phase3] format ${formatTime}ms | total ${totalTime}ms`)
 
     if (isDirectCall && conversationId) {
       await supabase.from('nm_chat_messages').insert({
@@ -638,7 +642,7 @@ Deno.serve(async (req: Request) => {
           models:     { classifier: MODEL_CLASSIFIER, formatter: MODEL_FORMATTER },
           timing:     { classify_ms: classifyTime, rag_ms: ragTime, format_ms: formatTime, total_ms: totalTime },
           rag_length: ragContext.length,
-          version:    'v14',
+          version:    'v15',
         }
       })
     }
@@ -662,20 +666,20 @@ Deno.serve(async (req: Request) => {
         },
         timing: { classify_ms: classifyTime, rag_ms: ragTime, format_ms: formatTime, total_ms: totalTime },
         models: { classifier: MODEL_CLASSIFIER, formatter: MODEL_FORMATTER },
-        version: 'v14',
+        version: 'v15',
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )
 
   } catch (error) {
-    console.error('[nm-chat v14] Fatal:', error)
+    console.error('[nm-chat v15] Fatal:', error)
     return new Response(
       JSON.stringify({
         content: 'Lo siento, ha habido un error. Inténtalo de nuevo.',
         message: 'Lo siento, ha habido un error. Inténtalo de nuevo.',
         error:   String(error),
         timing:  { total_ms: Date.now() - startTime },
-        version: 'v14',
+        version: 'v15',
       }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )

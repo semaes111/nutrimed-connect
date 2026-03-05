@@ -5,8 +5,12 @@ import PatientLayout from '../../components/layout/PatientLayout'
 import { usePageTheme } from '../../lib/usePageTheme'
 import { Send, Bot, User } from 'lucide-react'
 
-const EDGE_URL   = 'https://bpazmmbjjducdmxgfoum.supabase.co/functions/v1/nm-chat'
-const SERVICE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJwYXptbWJqamR1Y2RteGdmb3VtIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2NzgyNjUxOSwiZXhwIjoyMDgzNDAyNTE5fQ.PjLurJh6Mv4FCckyz1Fo9FasSskxosZfqUAuMgA8Yak'
+// EDGE_URL hardcodeada — los Build ARGs de Dokploy no se inyectan en Vite en build time
+const EDGE_URL  = 'https://bpazmmbjjducdmxgfoum.supabase.co/functions/v1/nm-chat'
+// ANON_KEY hardcodeada por el mismo motivo — es pública por diseño (Supabase + RLS)
+// La SERVICE_ROLE_KEY fue eliminada: la Edge Function usa su propia SERVICE_ROLE_KEY
+// como variable de entorno del servidor, nunca expuesta al cliente.
+const ANON_KEY  = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJwYXptbWJqamR1Y2RteGdmb3VtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njc4MjY1MTksImV4cCI6MjA4MzQwMjUxOX0.uZd2m7JMXd_i-bZVsTQTcqTEhJMxLXwvdPLK74h07Kw'
 
 export default function PatientChat() {
   const { profile } = useAuth()
@@ -15,6 +19,7 @@ export default function PatientChat() {
   const [input, setInput]       = useState('')
   const [loading, setLoading]   = useState(false)
   const [convId, setConvId]     = useState(null)
+  const [error, setError]       = useState(null)
   const scrollRef = useRef(null)
   const inputRef  = useRef(null)
 
@@ -60,18 +65,27 @@ export default function PatientChat() {
   useEffect(() => { if (profile?.id) loadOrCreateConversation() }, [profile?.id])
 
   async function loadOrCreateConversation() {
-    const { data: existing } = await supabase
-      .from('nm_chat_conversations').select('id')
-      .eq('patient_id', profile.id).order('created_at', { ascending: false }).limit(1)
-    if (existing?.length) {
-      setConvId(existing[0].id)
-      const { data: msgs } = await supabase.from('nm_chat_messages').select('*')
-        .eq('conversation_id', existing[0].id).order('created_at', { ascending: true })
-      if (msgs?.length) setMessages(msgs.map(m => ({ id: m.id, role: m.role, content: m.content })))
-    } else {
-      const { data: newConv } = await supabase.from('nm_chat_conversations')
-        .insert({ patient_id: profile.id, title: 'Chat nutricional' }).select().single()
-      if (newConv) setConvId(newConv.id)
+    try {
+      const { data: existing, error: err1 } = await supabase
+        .from('nm_chat_conversations').select('id')
+        .eq('patient_id', profile.id).order('created_at', { ascending: false }).limit(1)
+      if (err1) throw err1
+
+      if (existing?.length) {
+        setConvId(existing[0].id)
+        const { data: msgs, error: err2 } = await supabase.from('nm_chat_messages').select('*')
+          .eq('conversation_id', existing[0].id).order('created_at', { ascending: true })
+        if (err2) throw err2
+        if (msgs?.length) setMessages(msgs.map(m => ({ id: m.id, role: m.role, content: m.content })))
+      } else {
+        const { data: newConv, error: err3 } = await supabase.from('nm_chat_conversations')
+          .insert({ patient_id: profile.id, title: 'Chat nutricional' }).select().single()
+        if (err3) throw err3
+        if (newConv) setConvId(newConv.id)
+      }
+    } catch (err) {
+      console.error('[PatientChat] loadOrCreateConversation error:', err)
+      setError('No se pudo cargar el historial del chat.')
     }
   }
 
@@ -80,43 +94,66 @@ export default function PatientChat() {
     const text = input.trim()
     if (!text || loading) return
     setInput('')
+    setError(null)
+
+    // UI optimista: el mensaje aparece inmediatamente.
+    // La persistencia en BD ocurre SOLO tras confirmar respuesta correcta de la Edge Function
+    // — evita mensajes huérfanos (usuario sin respuesta) cuando la función falla.
     const userMsg = { id: Date.now(), role: 'user', content: text }
     setMessages(prev => [...prev, userMsg])
     setLoading(true)
 
-    if (convId) {
-      await supabase.from('nm_chat_messages').insert({ conversation_id: convId, role: 'user', content: text })
-    }
-
     try {
-      const res  = await fetch(EDGE_URL, {
+      const res = await fetch(EDGE_URL, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${SERVICE_KEY}` },
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${ANON_KEY}` },
         body: JSON.stringify({
-          // La Edge Function espera `message` (string del último turno)
-          // más el historial previo como `conversation_history`
           message: text,
           patient_id: profile.id,
           conversation_history: messages.map(m => ({ role: m.role, content: m.content })),
         }),
       })
-      const data = await res.json()
-      // La función devuelve: { content: string, message: string, response: string }
+
+      if (!res.ok) {
+        const errBody = await res.text()
+        throw new Error(`Edge Function error ${res.status}: ${errBody}`)
+      }
+
+      const data  = await res.json()
       const reply = data?.content || data?.message || data?.response || 'Sin respuesta del asistente.'
       const assistantMsg = { id: Date.now() + 1, role: 'assistant', content: reply }
       setMessages(prev => [...prev, assistantMsg])
+
+      // Persistir ambos mensajes en paralelo SOLO si la Edge Function respondió correctamente
       if (convId) {
-        await supabase.from('nm_chat_messages').insert({ conversation_id: convId, role: 'assistant', content: reply })
+        const [{ error: userErr }, { error: assistantErr }] = await Promise.all([
+          supabase.from('nm_chat_messages').insert({ conversation_id: convId, role: 'user', content: text }),
+          supabase.from('nm_chat_messages').insert({ conversation_id: convId, role: 'assistant', content: reply }),
+        ])
+        if (userErr)      console.error('[PatientChat] Error al persistir mensaje usuario:', userErr)
+        if (assistantErr) console.error('[PatientChat] Error al persistir respuesta asistente:', assistantErr)
       }
-    } catch {
-      setMessages(prev => [...prev, { id: Date.now() + 1, role: 'assistant', content: 'Error de conexión. Inténtalo de nuevo.' }])
+    } catch (err) {
+      console.error('[PatientChat] handleSend error:', err)
+      setMessages(prev => [...prev, {
+        id: Date.now() + 1,
+        role: 'assistant',
+        content: 'Error de conexión. Inténtalo de nuevo.',
+      }])
     }
+
     setLoading(false)
     setTimeout(() => inputRef.current?.focus(), 100)
   }
 
   return (
     <PatientLayout title="Asistente nutricional">
+      {error && (
+        <div className="mb-3 px-4 py-2.5 rounded-xl text-xs font-medium"
+          style={{ background: 'rgba(248,113,113,0.08)', color: '#FB7185', border: '1px solid rgba(248,113,113,0.2)' }}>
+          {error}
+        </div>
+      )}
       {/* Área de mensajes */}
       <div className="space-y-3 pb-4 min-h-[calc(100vh-200px)]">
         {messages.length === 0 && !loading && (

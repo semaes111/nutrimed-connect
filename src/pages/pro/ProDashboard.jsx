@@ -278,15 +278,18 @@ function PatientRow({ patient, onUpdateAppointment }) {
         {!pickerOpen && (
           <button
             onClick={openPicker}
-            className="w-7 h-7 rounded-lg flex items-center justify-center transition"
+            className="flex items-center gap-1 px-2 h-7 rounded-lg transition"
             style={{
-              background: appt ? 'rgba(45,212,191,0.08)' : 'rgba(255,255,255,0.03)',
-              border: '1px solid rgba(255,255,255,0.05)',
-              color: appt ? '#2DD4BF' : '#333A45',
+              background: appt ? 'rgba(45,212,191,0.12)' : 'rgba(100,116,139,0.15)',
+              border: `1px solid ${appt ? 'rgba(45,212,191,0.35)' : 'rgba(100,116,139,0.35)'}`,
+              color: appt ? '#2DD4BF' : '#94A3B8',
             }}
             title={appt ? 'Cambiar próxima cita' : 'Fijar próxima cita'}
           >
-            <CalendarClock size={13} />
+            <CalendarClock size={12} />
+            <span style={{ fontSize: 10, fontWeight: 600 }}>
+              {appt ? 'Cita' : '+ Cita'}
+            </span>
           </button>
         )}
       </div>

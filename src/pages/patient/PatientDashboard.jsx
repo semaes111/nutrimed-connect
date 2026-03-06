@@ -5,6 +5,7 @@ import { getDietConfig, DAYS_ORDER, DAY_LABELS, getTodaySlug, getDaysRemaining, 
 import PatientLayout from '../../components/layout/PatientLayout'
 import { usePageTheme } from '../../lib/usePageTheme'
 import { Scale, Pill, Calendar, Clock, TrendingDown, TrendingUp, Coffee, Sun, Moon, Cookie, ChevronDown, ChevronUp } from 'lucide-react'
+import NextAppointmentCountdown from '../../components/patient/NextAppointmentCountdown'
 
 /* ── Meal icons/labels — colores de acento siempre vibrantes ───────── */
 const MEAL_BASE = {
@@ -330,6 +331,9 @@ export default function PatientDashboard() {
           <p className="text-[10px] font-medium" style={{ color: tc.textDimmed }}>activos</p>
         </div>
       </div>
+
+      {/* ═══ PRÓXIMA CONSULTA (countdown) ═══ */}
+      <NextAppointmentCountdown appointmentDate={profile?.next_appointment} tc={tc} />
 
       {/* ═══ PLAN SEMANAL ═══ */}
       <div className="mb-4">

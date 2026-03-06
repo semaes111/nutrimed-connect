@@ -124,15 +124,9 @@ export default function PatientChat() {
       const assistantMsg = { id: Date.now() + 1, role: 'assistant', content: reply }
       setMessages(prev => [...prev, assistantMsg])
 
-      // Persistir ambos mensajes en paralelo SOLO si la Edge Function respondió correctamente
-      if (convId) {
-        const [{ error: userErr }, { error: assistantErr }] = await Promise.all([
-          supabase.from('nm_chat_messages').insert({ conversation_id: convId, role: 'user', content: text }),
-          supabase.from('nm_chat_messages').insert({ conversation_id: convId, role: 'assistant', content: reply }),
-        ])
-        if (userErr)      console.error('[PatientChat] Error al persistir mensaje usuario:', userErr)
-        if (assistantErr) console.error('[PatientChat] Error al persistir respuesta asistente:', assistantErr)
-      }
+      // NOTA: La persistencia en nm_chat_messages la gestiona la Edge Function
+      // cuando recibe { message, patient_id } (isDirectCall=true).
+      // El frontend NO persiste por separado para evitar duplicados.
     } catch (err) {
       console.error('[PatientChat] handleSend error:', err)
       setMessages(prev => [...prev, {

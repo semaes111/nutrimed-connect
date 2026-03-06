@@ -2,9 +2,15 @@ import 'jsr:@supabase/functions-js/edge-runtime.d.ts'
 import { createClient } from 'npm:@supabase/supabase-js@2'
 
 // ═══════════════════════════════════════════════════════════════════════
-// nm-chat v15 — Inject today's weekday (Europe/Madrid) into formatter context
-// Fix: cuando nm_daily_meals vacío, genera plantilla desde nm_meal_catalog
-//      + nm_breakfast_catalog igual que el frontend React
+// nm-chat v16 — Fix 4 bugs críticos:
+//   1. Doble persistencia: frontend+EdgeFn escribían duplicados → frontend
+//      ya NO persiste, la Edge Function es el único owner de persistencia.
+//   2. patientContext sin datos del profesional → fetch nm_professionals
+//      via patient.professional_id e inyectar en contexto del formatter.
+//   3. FORMATTER_SYSTEM usaba "tu dietista" genérico → ahora incluye
+//      nombre y especialidad real del profesional cuando están disponibles.
+//   4. Intent ciego: añadido 'info_paciente' con RAG específico que expone
+//      datos del paciente + del profesional → sin alucinaciones.
 // ═══════════════════════════════════════════════════════════════════════
 
 const MODEL_CLASSIFIER = 'claude-3-haiku-20240307'
@@ -89,6 +95,7 @@ INTENCIONES VÁLIDAS (elige UNA):
 - receta_consulta: Pide recetas o preparaciones específicas
 - medicacion: Pregunta sobre medicación (no la prescribas, solo informa)
 - peso_progreso: Pregunta sobre su progreso de peso, objetivos
+- info_paciente: Pregunta sobre sus propios datos personales, quién le atiende, qué profesional tiene, especialidad del doctor, o información de su perfil
 - saludo: Saludo sin contenido nutricional
 - despedida: Se despide o agradece
 - otro: No encaja en nutrición/dietas
@@ -108,20 +115,21 @@ Responde SOLO JSON válido, sin markdown, sin backticks:
 {"intent":"...","entities":{"food":"...","meal_time":"..."},"confidence":"alta|media|baja"}`
 }
 
-// ─── FORMATTER SYSTEM PROMPT ──────────────────────────────────────────
+// ─── FORMATTER SYSTEM PROMPT (recibe profesional via patientContext) ──
 const FORMATTER_SYSTEM = `Eres el asistente nutricional personal del paciente.
 
 JERARQUÍA DE FUENTES (OBLIGATORIA — seguir en este orden):
-1. MENÚ GUARDADO (etiquetado "MENÚ GUARDADO"): Datos personalizados por el dietista. Máxima prioridad.
+1. MENÚ GUARDADO (etiquetado "MENÚ GUARDADO"): Datos personalizados por el profesional. Máxima prioridad.
    - Las líneas "[INDICACIONES DEL DOCTOR PARA ESTE DÍA]" son instrucciones directas del profesional. SIEMPRE refléjalas cuando sean relevantes para la pregunta.
 2. DIETA ASIGNADA: Las líneas "[NOTA DEL PROFESIONAL]" son restricciones o ajustes específicos del doctor. OBLIGATORIO respetarlas y mencionarlas si el paciente pregunta por ese día o dieta.
 3. PLANTILLA BASE DE DIETA (etiquetado "PLANTILLA BASE"): Generada automáticamente. Usar cuando no hay menú guardado.
 4. ALIMENTOS PERMITIDOS POR CÓDIGO DE DIETA: Referencia de frecuencia y preparación.
 5. DESCRIPCIÓN DE DIETA: Para explicar en qué consiste su dieta si lo pregunta.
 6. HISTORIAL DE PESO: Solo para preguntas de progreso.
+7. DATOS DEL PROFESIONAL: Nombre y especialidad del profesional que le atiende — usar SOLO cuando el paciente pregunte directamente por él.
 
 REGLAS ABSOLUTAS:
-1. Las anotaciones del doctor ([NOTA DEL PROFESIONAL], [INDICACIONES DEL DOCTOR]) tienen prioridad absoluta. Si el doctor indica algo concreto para un día o dieta, menciónalo siempre que sea relevante.
+1. Las anotaciones del doctor ([NOTA DEL PROFESIONAL], [INDICACIONES DEL DOCTOR]) tienen prioridad absoluta.
 2. Si hay PLANTILLA BASE, úsala como referencia. NO digas "el doctor no ha configurado tu menú".
 3. NUNCA uses conocimiento nutricional general externo. Solo los datos RAG.
 4. NUNCA prescribas medicación ni dosis.
@@ -130,8 +138,9 @@ REGLAS ABSOLUTAS:
 7. Si la pregunta es médica compleja di: "Eso mejor lo hablamos con el doctor en la próxima consulta.".
 8. Zero emojis. Texto natural, sin markdown, sin listas.
 9. Responde SIEMPRE en español.
-10. Preséntate como "tu asistente nutricional personal". Sin nombre propio.
-11. SOLO di "no encuentro tu dieta" si NO hay ni menú guardado NI plantilla base en los datos RAG.`
+10. Preséntate como "tu asistente nutricional". Sin nombre propio.
+11. SOLO di "no encuentro tu dieta" si NO hay ni menú guardado NI plantilla base en los datos RAG.
+12. Si el paciente pregunta por su profesional, usa el nombre y especialidad que aparece en DATOS DEL PROFESIONAL. Si no están disponibles, di que no tienes esa información y que puede preguntarle directamente en consulta.`
 
 // ─── ANTHROPIC API CALL ──────────────────────────────────────────────
 async function callAnthropic(
@@ -504,6 +513,47 @@ async function fetchRAGContext(
       break
     }
 
+    case 'info_paciente': {
+      // RAG específico para preguntas sobre identidad, perfil y profesional
+      const { data: fullPat } = await supabase
+        .from('nm_patients')
+        .select('full_name, current_weight, initial_weight, target_weight, height, age, professional_id, created_at')
+        .eq('id', patientId).single()
+
+      if (fullPat) {
+        const lostKg = fullPat.initial_weight && fullPat.current_weight
+          ? (Number(fullPat.initial_weight) - Number(fullPat.current_weight)).toFixed(1)
+          : null
+        ragParts.push(
+          `\nDATOS DEL PACIENTE:\n` +
+          `- Nombre: ${fullPat.full_name}\n` +
+          `- Peso inicial: ${fullPat.initial_weight || '?'}kg\n` +
+          `- Peso actual: ${fullPat.current_weight || '?'}kg\n` +
+          `- Peso objetivo: ${fullPat.target_weight || 'No definido'}kg\n` +
+          `- Altura: ${fullPat.height || 'No registrada'}cm\n` +
+          `- Edad: ${fullPat.age || '?'} años` +
+          (lostKg && Number(lostKg) > 0 ? `\n- Peso perdido hasta ahora: ${lostKg}kg` : '')
+        )
+      }
+
+      // Datos del profesional asignado
+      if (patient?.professional_id) {
+        const { data: prof } = await supabase
+          .from('nm_professionals')
+          .select('full_name, specialty, email')
+          .eq('id', patient.professional_id)
+          .single()
+        if (prof) {
+          ragParts.push(
+            `\nPROFESIONAL QUE LE ATIENDE:\n` +
+            `- Nombre: ${prof.full_name}\n` +
+            `- Especialidad: ${prof.specialty || 'No especificada'}`
+          )
+        }
+      }
+      break
+    }
+
     default:
       break
   }
@@ -568,12 +618,27 @@ Deno.serve(async (req: Request) => {
 
     const { data: patient } = await supabase
       .from('nm_patients')
-      .select('full_name, current_weight, target_weight, initial_weight, height, age')
+      .select('full_name, current_weight, target_weight, initial_weight, height, age, professional_id')
       .eq('id', patientId).single()
+
+    // Fetch profesional asignado para contexto del formatter (fix Bug 2+3)
+    let professional: { full_name: string; specialty: string } | null = null
+    if (patient?.professional_id) {
+      const { data: prof } = await supabase
+        .from('nm_professionals')
+        .select('full_name, specialty')
+        .eq('id', patient.professional_id)
+        .single()
+      professional = prof || null
+    }
 
     const patientContext = patient
       ? `Nombre: ${patient.full_name || 'Paciente'} | Peso: ${patient.current_weight || '?'}kg | Objetivo: ${patient.target_weight || '?'}kg | Altura: ${patient.height || '?'}cm | Edad: ${patient.age || '?'}`
       : 'Paciente sin datos'
+
+    const professionalContext = professional
+      ? `${professional.full_name}${professional.specialty ? ' — ' + professional.specialty : ''}`
+      : 'Profesional no identificado'
 
     const { data: history } = await supabase
       .from('nm_chat_messages')
@@ -598,13 +663,13 @@ Deno.serve(async (req: Request) => {
     const classifyStart = Date.now()
     const classification = await classifyIntent(userMessage, patientContext)
     const classifyTime   = Date.now() - classifyStart
-    console.log(`[v15 Phase1] intent=${classification.intent} conf=${classification.confidence} (${classifyTime}ms)`)
+    console.log(`[v16 Phase1] intent=${classification.intent} conf=${classification.confidence} (${classifyTime}ms)`)
 
     // FASE 2: RAG (con template auto-fill cuando nm_daily_meals vacío)
     const ragStart   = Date.now()
     const ragContext = await fetchRAGContext(supabase, classification.intent, classification.entities, patientId)
     const ragTime    = Date.now() - ragStart
-    console.log(`[v15 Phase2] RAG ${ragContext.length} chars (${ragTime}ms)`)
+    console.log(`[v16 Phase2] RAG ${ragContext.length} chars (${ragTime}ms)`)
 
     // FASE 3: Formatear
     const formatStart = Date.now()
@@ -618,6 +683,7 @@ Deno.serve(async (req: Request) => {
         content:
           `[HOY ES: ${todayName.toUpperCase()}]\n` +
           `[CONTEXTO PACIENTE: ${patientContext}]\n` +
+          `[DATOS DEL PROFESIONAL: ${professionalContext}]\n` +
           `[INTENCIÓN DETECTADA: ${classification.intent}]\n` +
           `[DATOS RAG — úsalos como única fuente de verdad]:\n${ragContext}\n\n` +
           `[MENSAJE DEL PACIENTE]: ${userMessage}`,
@@ -628,7 +694,7 @@ Deno.serve(async (req: Request) => {
     const formattedResponse = formatResult.text || 'Lo siento, no he podido procesar tu consulta.'
     const formatTime        = Date.now() - formatStart
     const totalTime         = Date.now() - startTime
-    console.log(`[v15 Phase3] format ${formatTime}ms | total ${totalTime}ms`)
+    console.log(`[v16 Phase3] format ${formatTime}ms | total ${totalTime}ms`)
 
     if (isDirectCall && conversationId) {
       await supabase.from('nm_chat_messages').insert({
@@ -642,7 +708,7 @@ Deno.serve(async (req: Request) => {
           models:     { classifier: MODEL_CLASSIFIER, formatter: MODEL_FORMATTER },
           timing:     { classify_ms: classifyTime, rag_ms: ragTime, format_ms: formatTime, total_ms: totalTime },
           rag_length: ragContext.length,
-          version:    'v15',
+          version: 'v16',
         }
       })
     }
@@ -666,20 +732,20 @@ Deno.serve(async (req: Request) => {
         },
         timing: { classify_ms: classifyTime, rag_ms: ragTime, format_ms: formatTime, total_ms: totalTime },
         models: { classifier: MODEL_CLASSIFIER, formatter: MODEL_FORMATTER },
-        version: 'v15',
+        version: 'v16',
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )
 
   } catch (error) {
-    console.error('[nm-chat v15] Fatal:', error)
+    console.error('[nm-chat v16] Fatal:', error)
     return new Response(
       JSON.stringify({
         content: 'Lo siento, ha habido un error. Inténtalo de nuevo.',
         message: 'Lo siento, ha habido un error. Inténtalo de nuevo.',
         error:   String(error),
         timing:  { total_ms: Date.now() - startTime },
-        version: 'v15',
+        version: 'v16',
       }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )

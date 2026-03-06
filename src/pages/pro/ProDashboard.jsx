@@ -240,11 +240,11 @@ function PatientRow({ patient, onUpdateAppointment }) {
 
       {/* ── FILA 2: próxima consulta — siempre visible ───────────────── */}
       <div
-        className="flex items-center gap-2 px-3 pb-2.5"
-        style={{ borderTop: '1px solid rgba(255,255,255,0.04)' }}
+        className="flex items-center gap-2 px-3 pt-2 pb-2.5"
+        style={{ borderTop: '1px solid rgba(255,255,255,0.09)' }}
         onClick={e => { e.preventDefault(); e.stopPropagation() }}
       >
-        <CalendarClock size={13} style={{ color: appt ? (apptBadge?.color || '#2DD4BF') : '#4A5568', flexShrink: 0 }} />
+        <CalendarClock size={13} style={{ color: appt ? (apptBadge?.color || '#2DD4BF') : '#2DD4BF80', flexShrink: 0 }} />
 
         {/* Sin picker abierto */}
         {!pickerOpen && (
@@ -255,15 +255,15 @@ function PatientRow({ patient, onUpdateAppointment }) {
                 {apptReadable}
               </span>
             ) : (
-              <span className="text-[11px] text-[#4A5568] flex-1">Sin próxima consulta</span>
+              <span className="text-[11px] flex-1" style={{ color: '#64748B' }}>Sin próxima consulta</span>
             )}
             <button
               onClick={openPicker}
-              className="text-[10px] font-semibold px-2.5 py-1 rounded-lg shrink-0 transition"
+              className="text-[10px] font-bold px-2.5 py-1 rounded-lg shrink-0 transition"
               style={{
-                background: appt ? 'rgba(45,212,191,0.10)' : 'rgba(100,116,139,0.18)',
-                border: `1px solid ${appt ? 'rgba(45,212,191,0.30)' : 'rgba(100,116,139,0.30)'}`,
-                color: appt ? '#2DD4BF' : '#94A3B8',
+                background: appt ? 'rgba(45,212,191,0.12)' : 'rgba(45,212,191,0.08)',
+                border: `1px solid ${appt ? 'rgba(45,212,191,0.35)' : 'rgba(45,212,191,0.20)'}`,
+                color: '#2DD4BF',
               }}
             >
               {appt ? 'Cambiar' : '+ Fijar cita'}

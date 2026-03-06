@@ -25,7 +25,9 @@ CREATE POLICY "service_all_nm_shopping_lists"
   ON nm_shopping_lists FOR ALL TO service_role
   USING (true) WITH CHECK (true);
 
--- Anon: paciente puede leer su lista desde el frontend
+-- Anon: acceso durante login (patrón del proyecto)
 CREATE POLICY "anon_read_nm_shopping_lists"
   ON nm_shopping_lists FOR SELECT TO anon
   USING (true);
+
+-- NOTA: la política authenticated se añade en 003_nm_shopping_rls_authenticated.sql

@@ -189,126 +189,122 @@ function PatientRow({ patient, onUpdateAppointment }) {
   // Unique diet types for this patient
   const dietTypes = [...new Set(activeDiets.map(d => d.diet_type))]
 
+  // Texto legible de la cita actual
+  const apptReadable = appt
+    ? new Date(appt).toLocaleString('es-ES', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
+    : null
+
   return (
-    <Link to={`/pro/patient/${patient.id}`}
-      className="card !p-0 flex items-center gap-4 hover:shadow-md transition group cursor-pointer"
-    >
-      <div className="pl-4 py-3">
-        <div className="w-11 h-11 rounded-full bg-[rgba(45,212,191,0.08)] flex items-center justify-center text-sm font-bold text-[var(--color-brand)]">
+    <div className="card !p-0 transition group" style={{ borderRadius: 16 }}>
+
+      {/* ── FILA 1: datos del paciente ───────────────────────────────── */}
+      <Link to={`/pro/patient/${patient.id}`}
+        className="flex items-center gap-3 px-3 pt-3 pb-2 cursor-pointer"
+      >
+        <div className="w-10 h-10 rounded-full bg-[rgba(45,212,191,0.08)] flex items-center justify-center text-sm font-bold text-[var(--color-brand)] shrink-0">
           {patient.full_name?.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase() || '??'}
         </div>
-      </div>
 
-      <div className="flex-1 py-3 min-w-0">
-        <div className="flex items-center gap-2">
-          <p className="text-sm font-semibold text-[#E2E8F0] truncate">{patient.full_name}</p>
-          {patient.is_blocked && <span className="badge bg-[rgba(248,113,113,0.06)] text-[#FB7185] text-[10px]">Bloqueado</span>}
-          {isExpiring && <span className="badge bg-[rgba(251,191,36,0.04)] text-[#E9A820] text-[10px]">{daysLeft}d</span>}
-          {isExpired && <span className="badge bg-[rgba(248,113,113,0.06)] text-[#FB7185] text-[10px]">Expirado</span>}
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <p className="text-sm font-semibold text-[#E2E8F0] truncate">{patient.full_name}</p>
+            {patient.is_blocked && <span className="badge bg-[rgba(248,113,113,0.06)] text-[#FB7185] text-[10px]">Bloqueado</span>}
+            {isExpiring && <span className="badge bg-[rgba(251,191,36,0.04)] text-[#E9A820] text-[10px]">{daysLeft}d</span>}
+            {isExpired && <span className="badge bg-[rgba(248,113,113,0.06)] text-[#FB7185] text-[10px]">Expirado</span>}
+          </div>
+          <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+            {latestWeight && (
+              <span className="text-[11px] text-[#4A5568] flex items-center gap-1">
+                <Scale size={9} /> {Number(latestWeight.weight).toFixed(1)} kg
+              </span>
+            )}
+            {activeMeds > 0 && (
+              <span className="text-[11px] text-[#4A5568] flex items-center gap-1">
+                <Pill size={9} /> {activeMeds}
+              </span>
+            )}
+            {dietTypes.slice(0, 2).map(dt => {
+              const cfg = getDietConfig(dt)
+              return (
+                <span key={dt} className="text-[10px] font-medium px-1.5 py-0.5 rounded-full"
+                  style={{ backgroundColor: cfg?.bg, color: cfg?.color }}>
+                  {cfg?.label || dt}
+                </span>
+              )
+            })}
+          </div>
         </div>
-        <div className="flex items-center gap-3 mt-1">
-          {latestWeight && (
-            <span className="text-[11px] text-[#4A5568] flex items-center gap-1">
-              <Scale size={10} /> {Number(latestWeight.weight).toFixed(1)} kg
-            </span>
-          )}
-          {activeMeds > 0 && (
-            <span className="text-[11px] text-[#4A5568] flex items-center gap-1">
-              <Pill size={10} /> {activeMeds}
-            </span>
-          )}
-          {patient.phone && <span className="text-[11px] text-[#333A45]">{patient.phone}</span>}
-        </div>
-      </div>
 
-      {/* Botón y badge de próxima cita */}
-      <div className="flex items-center gap-1.5 pr-2" onClick={e => e.preventDefault()}>
-        {/* Badge días restantes */}
-        {apptBadge && !pickerOpen && (
-          <span
-            className="text-[10px] font-bold px-2 py-0.5 rounded-full"
-            style={{ background: apptBadge.bg, color: apptBadge.color }}
-          >
-            📅 {apptBadge.label}
-          </span>
+        <ChevronRight size={15} className="text-[#333A45] group-hover:text-[var(--color-brand)] transition shrink-0" />
+      </Link>
+
+      {/* ── FILA 2: próxima consulta — siempre visible ───────────────── */}
+      <div
+        className="flex items-center gap-2 px-3 pb-2.5"
+        style={{ borderTop: '1px solid rgba(255,255,255,0.04)' }}
+        onClick={e => { e.preventDefault(); e.stopPropagation() }}
+      >
+        <CalendarClock size={13} style={{ color: appt ? (apptBadge?.color || '#2DD4BF') : '#4A5568', flexShrink: 0 }} />
+
+        {/* Sin picker abierto */}
+        {!pickerOpen && (
+          <>
+            {apptReadable ? (
+              <span className="text-[11px] font-semibold flex-1 truncate"
+                style={{ color: apptBadge?.color || '#2DD4BF' }}>
+                {apptReadable}
+              </span>
+            ) : (
+              <span className="text-[11px] text-[#4A5568] flex-1">Sin próxima consulta</span>
+            )}
+            <button
+              onClick={openPicker}
+              className="text-[10px] font-semibold px-2.5 py-1 rounded-lg shrink-0 transition"
+              style={{
+                background: appt ? 'rgba(45,212,191,0.10)' : 'rgba(100,116,139,0.18)',
+                border: `1px solid ${appt ? 'rgba(45,212,191,0.30)' : 'rgba(100,116,139,0.30)'}`,
+                color: appt ? '#2DD4BF' : '#94A3B8',
+              }}
+            >
+              {appt ? 'Cambiar' : '+ Fijar cita'}
+            </button>
+          </>
         )}
 
-        {/* Picker inline */}
+        {/* Con picker abierto */}
         {pickerOpen && (
-          <div
-            className="flex items-center gap-1"
-            onClick={e => { e.preventDefault(); e.stopPropagation() }}
-          >
+          <div className="flex items-center gap-1.5 flex-1 flex-wrap"
+            onClick={e => { e.preventDefault(); e.stopPropagation() }}>
             <input
               ref={pickerRef}
               type="datetime-local"
               value={pickerValue}
               onChange={e => setPickerValue(e.target.value)}
               onClick={e => { e.preventDefault(); e.stopPropagation() }}
-              className="text-[11px] rounded-lg px-2 py-1 border outline-none"
+              className="flex-1 rounded-lg px-2 py-1 outline-none"
               style={{
-                background: '#1F232B',
-                border: '1px solid #2A2F3A',
+                background: '#1A1E26',
+                border: '1px solid #2DD4BF50',
                 color: '#CBD5E1',
                 colorScheme: 'dark',
                 fontSize: 11,
+                minWidth: 0,
               }}
             />
-            <button
-              onClick={saveAppointment}
-              disabled={saving}
-              className="w-6 h-6 rounded-md flex items-center justify-center"
-              style={{ background: 'rgba(45,212,191,0.15)', color: '#2DD4BF' }}
-              title="Guardar"
-            >
-              {saving ? <span className="animate-spin text-[10px]">⟳</span> : <Check size={12} />}
+            <button onClick={saveAppointment} disabled={saving}
+              className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-bold shrink-0"
+              style={{ background: 'rgba(45,212,191,0.15)', color: '#2DD4BF', border: '1px solid rgba(45,212,191,0.3)' }}>
+              {saving ? '...' : <><Check size={11} /> Guardar</>}
             </button>
-            <button
-              onClick={closePicker}
-              className="w-6 h-6 rounded-md flex items-center justify-center"
-              style={{ background: 'rgba(248,113,113,0.1)', color: '#FB7185' }}
-              title="Cancelar"
-            >
-              <X size={12} />
+            <button onClick={closePicker}
+              className="flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-bold shrink-0"
+              style={{ background: 'rgba(248,113,113,0.10)', color: '#FB7185', border: '1px solid rgba(248,113,113,0.25)' }}>
+              <X size={11} />
             </button>
           </div>
         )}
-
-        {/* Botón abrir picker */}
-        {!pickerOpen && (
-          <button
-            onClick={openPicker}
-            className="flex items-center gap-1 px-2 h-7 rounded-lg transition"
-            style={{
-              background: appt ? 'rgba(45,212,191,0.12)' : 'rgba(100,116,139,0.15)',
-              border: `1px solid ${appt ? 'rgba(45,212,191,0.35)' : 'rgba(100,116,139,0.35)'}`,
-              color: appt ? '#2DD4BF' : '#94A3B8',
-            }}
-            title={appt ? 'Cambiar próxima cita' : 'Fijar próxima cita'}
-          >
-            <CalendarClock size={12} />
-            <span style={{ fontSize: 10, fontWeight: 600 }}>
-              {appt ? 'Cita' : '+ Cita'}
-            </span>
-          </button>
-        )}
       </div>
 
-      {/* Diet badges */}
-      <div className="flex items-center gap-1.5 pr-2">
-        {dietTypes.slice(0, 3).map(dt => {
-          const cfg = getDietConfig(dt)
-          return (
-            <span key={dt} className="inline-block px-2 py-0.5 rounded-full text-[10px] font-medium" style={{ backgroundColor: cfg?.bg, color: cfg?.color }}>
-              {cfg?.label || dt}
-            </span>
-          )
-        })}
-      </div>
-
-      <div className="pr-4 py-3">
-        <ChevronRight size={16} className="text-[#333A45] group-hover:text-[var(--color-brand)] transition" />
-      </div>
-    </Link>
+    </div>
   )
 }

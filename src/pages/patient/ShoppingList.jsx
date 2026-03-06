@@ -13,7 +13,7 @@ import { useAuth } from '../../lib/AuthContext'
 import { supabase } from '../../lib/supabase'
 import PatientLayout from '../../components/layout/PatientLayout'
 import { usePageTheme } from '../../lib/usePageTheme'
-import { ShoppingCart, Check, Copy, CheckCheck, RefreshCw } from 'lucide-react'
+import { ShoppingCart, Check, Copy, CheckCheck, RefreshCw, Loader } from 'lucide-react'
 
 /* ── Configuración de categorías — orden, emojis y colores de acento ── */
 const CATEGORIES = [
@@ -145,11 +145,14 @@ export default function ShoppingList() {
   const { profile } = useAuth()
   const tc = usePageTheme()
 
-  const [list,    setList]    = useState(null)
-  const [loading, setLoading] = useState(true)
-  const [error,   setError]   = useState(null)
-  const [checked, setChecked] = useState(new Set())   // estado local por sesión
-  const [copied,  setCopied]  = useState(false)
+  const [list,      setList]      = useState(null)
+  const [loading,   setLoading]   = useState(true)
+  const [error,     setError]     = useState(null)
+  const [checked,   setChecked]   = useState(new Set())   // estado local por sesión
+  const [copied,    setCopied]    = useState(false)
+  const [updating,  setUpdating]  = useState(false)       // spinner regeneración
+  const [updateMsg, setUpdateMsg] = useState(null)        // feedback éxito/error/sin dieta
+  const [hasDiet,   setHasDiet]   = useState(null)        // null=sin comprobar, true/false
 
   useEffect(() => { if (profile?.id) loadList() }, [profile?.id])
 
@@ -174,6 +177,58 @@ export default function ShoppingList() {
       setError('Error al cargar la lista. Intenta de nuevo.')
     } finally {
       setLoading(false)
+    }
+  }
+
+  /**
+   * Verifica si el paciente tiene dieta asignada antes de llamar a nm-shopping.
+   * Sin dieta → mensaje informativo (amarillo), sin llamada a la Edge Function.
+   * Con dieta → llama a nm-shopping → recarga la lista desde BD.
+   */
+  async function checkDietAndUpdate() {
+    setUpdating(true)
+    setUpdateMsg(null)
+    try {
+      // 1 — Verificar si hay planes de dieta activos para este paciente
+      const { count, error: countErr } = await supabase
+        .from('nm_diet_plans')
+        .select('id', { count: 'exact', head: true })
+        .eq('patient_id', profile.id)
+        .eq('is_active', true)
+
+      if (countErr) throw countErr
+
+      if (!count || count === 0) {
+        // Sin dieta asignada — feedback amarillo, no llamar a la Edge Function
+        setHasDiet(false)
+        setUpdateMsg('Tu dietista aún no ha configurado tu plan de alimentación.')
+        setUpdating(false)
+        setTimeout(() => setUpdateMsg(null), 5000)
+        return
+      }
+
+      // 2 — Hay dieta → llamar a nm-shopping para regenerar
+      setHasDiet(true)
+      const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || 'https://bpazmmbjjducdmxgfoum.supabase.co'
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/nm-shopping`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ patient_id: profile.id }),
+      })
+
+      if (!res.ok) throw new Error(`nm-shopping status ${res.status}`)
+
+      // 3 — Recargar lista desde BD (loadList ya hace setChecked(new Set()))
+      await loadList()
+      setUpdateMsg('Lista actualizada ✓')
+      setTimeout(() => setUpdateMsg(null), 4000)
+
+    } catch (err) {
+      console.error('[ShoppingList] checkDietAndUpdate error:', err)
+      setUpdateMsg('Error al actualizar. Inténtalo de nuevo.')
+      setTimeout(() => setUpdateMsg(null), 4000)
+    } finally {
+      setUpdating(false)
     }
   }
 
@@ -260,16 +315,40 @@ export default function ShoppingList() {
             Tu lista de la compra se generará automáticamente cuando tu dietista configure o actualice tu plan de alimentación.
           </p>
           <button
-            onClick={loadList}
+            onClick={checkDietAndUpdate}
+            disabled={updating}
             className="mt-6 flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold transition-all"
             style={{
-              background: tc.cardInsetBg,
-              border: tc.cardInsetBorder,
-              color: tc.textSecondary,
+              background: tc.isDark ? 'rgba(45,212,191,0.10)' : 'rgba(13,148,136,0.08)',
+              border: `1px solid ${tc.isDark ? 'rgba(45,212,191,0.22)' : 'rgba(13,148,136,0.18)'}`,
+              color: tc.textAccent,
+              opacity: updating ? 0.65 : 1,
             }}
           >
-            <RefreshCw size={14} /> Actualizar
+            {updating
+              ? <><Loader size={14} className="animate-spin" /> Generando...</>
+              : <><RefreshCw size={14} /> Generar mi lista</>
+            }
           </button>
+          {updateMsg && (
+            <p
+              className="mt-3 text-[12px] font-semibold px-4 py-2 rounded-xl"
+              style={{
+                color:      updateMsg.includes('✓') ? '#34D399'
+                          : updateMsg.includes('aún no') ? '#FBBF24'
+                          : '#FB7185',
+                background: updateMsg.includes('✓') ? 'rgba(52,211,153,0.08)'
+                          : updateMsg.includes('aún no') ? 'rgba(251,191,36,0.08)'
+                          : 'rgba(251,113,133,0.08)',
+                border: `1px solid ${
+                          updateMsg.includes('✓') ? 'rgba(52,211,153,0.20)'
+                          : updateMsg.includes('aún no') ? 'rgba(251,191,36,0.20)'
+                          : 'rgba(251,113,133,0.20)'}`,
+              }}
+            >
+              {updateMsg}
+            </p>
+          )}
         </div>
       </PatientLayout>
     )
@@ -311,25 +390,49 @@ export default function ShoppingList() {
             </div>
           </div>
 
-          {/* Botón copiar */}
-          <button
-            onClick={copyToClipboard}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[11px] font-semibold transition-all"
-            style={{
-              background: copied
-                ? `rgba(45,212,191,${tc.isDark ? '0.18' : '0.12'})`
-                : tc.cardInsetBg,
-              border: copied
-                ? `1px solid rgba(45,212,191,${tc.isDark ? '0.35' : '0.25'})`
-                : tc.cardInsetBorder,
-              color: copied ? tc.textAccent : tc.textSecondary,
-            }}
-          >
-            {copied
-              ? <><CheckCheck size={12} /> Copiado</>
-              : <><Copy size={12} /> Copiar</>
-            }
-          </button>
+          {/* Botones: Actualizar + Copiar */}
+          <div className="flex items-center gap-2">
+            {/* Botón Actualizar lista */}
+            <button
+              onClick={checkDietAndUpdate}
+              disabled={updating}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[11px] font-semibold transition-all"
+              style={{
+                background: updating
+                  ? `rgba(45,212,191,${tc.isDark ? '0.18' : '0.12'})`
+                  : tc.isDark ? 'rgba(45,212,191,0.10)' : 'rgba(13,148,136,0.08)',
+                border: `1px solid ${tc.isDark ? 'rgba(45,212,191,0.22)' : 'rgba(13,148,136,0.18)'}`,
+                color: tc.textAccent,
+                opacity: updating ? 0.75 : 1,
+              }}
+              title="Regenerar lista de la compra con tu dieta actual"
+            >
+              {updating
+                ? <><Loader size={11} className="animate-spin" /> Generando...</>
+                : <><RefreshCw size={11} /> Actualizar</>
+              }
+            </button>
+
+            {/* Botón Copiar */}
+            <button
+              onClick={copyToClipboard}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[11px] font-semibold transition-all"
+              style={{
+                background: copied
+                  ? `rgba(45,212,191,${tc.isDark ? '0.18' : '0.12'})`
+                  : tc.cardInsetBg,
+                border: copied
+                  ? `1px solid rgba(45,212,191,${tc.isDark ? '0.35' : '0.25'})`
+                  : tc.cardInsetBorder,
+                color: copied ? tc.textAccent : tc.textSecondary,
+              }}
+            >
+              {copied
+                ? <><CheckCheck size={12} /> Copiado</>
+                : <><Copy size={12} /> Copiar</>
+              }
+            </button>
+          </div>
         </div>
 
         {/* Barra de progreso */}
@@ -366,6 +469,27 @@ export default function ShoppingList() {
               </p>
             )}
           </div>
+
+          {/* Feedback de actualización */}
+          {updateMsg && (
+            <div
+              className="mt-2.5 px-3 py-2 rounded-xl text-[11px] font-semibold"
+              style={{
+                color:      updateMsg.includes('✓') ? '#34D399'
+                          : updateMsg.includes('aún no') ? '#FBBF24'
+                          : '#FB7185',
+                background: updateMsg.includes('✓') ? 'rgba(52,211,153,0.08)'
+                          : updateMsg.includes('aún no') ? 'rgba(251,191,36,0.08)'
+                          : 'rgba(251,113,133,0.08)',
+                border: `1px solid ${
+                          updateMsg.includes('✓') ? 'rgba(52,211,153,0.18)'
+                          : updateMsg.includes('aún no') ? 'rgba(251,191,36,0.18)'
+                          : 'rgba(251,113,133,0.18)'}`,
+              }}
+            >
+              {updateMsg}
+            </div>
+          )}
         </div>
       </div>
 

@@ -24,16 +24,18 @@ import DietTab     from '../../components/pro/tabs/DietTab.jsx'
 import WeightTab   from '../../components/pro/tabs/WeightTab.jsx'
 import MedsTab     from '../../components/pro/tabs/MedsTab.jsx'
 import AccessTab   from '../../components/pro/tabs/AccessTab.jsx'
+import ShoppingListTab from '../../components/pro/tabs/ShoppingListTab.jsx'
 
 import { ArrowLeft, Edit, Phone, Mail } from 'lucide-react'
 
 const TABS = [
-  { key: 'overview', label: 'General'    },
-  { key: 'diet',     label: 'Dietas'     },
-  { key: 'meals',    label: 'Menús'      },
-  { key: 'weight',   label: 'Peso'       },
-  { key: 'meds',     label: 'Medicación' },
-  { key: 'access',   label: 'Acceso'     },
+  { key: 'overview',  label: 'General'    },
+  { key: 'diet',      label: 'Dietas'     },
+  { key: 'meals',     label: 'Menús'      },
+  { key: 'shopping',  label: '🛒 Compra'  },
+  { key: 'weight',    label: 'Peso'       },
+  { key: 'meds',      label: 'Medicación' },
+  { key: 'access',    label: 'Acceso'     },
 ]
 
 export default function ProPatientDetail() {
@@ -142,12 +144,13 @@ export default function ProPatientDetail() {
 
       {/* ── Contenido del tab activo ── */}
       <div className="page-enter">
-        {tab === 'overview' && <OverviewTab patient={patient} />}
-        {tab === 'diet'     && <DietTab patient={patient} professionalId={profile?.id} onUpdate={loadPatient} />}
-        {tab === 'meals'    && <MealsTab patient={patient} professionalId={profile?.id} />}
-        {tab === 'weight'   && <WeightTab patient={patient} />}
-        {tab === 'meds'     && <MedsTab patient={patient} onUpdate={loadPatient} />}
-        {tab === 'access'   && <AccessTab patient={patient} onUpdate={loadPatient} />}
+        {tab === 'overview'  && <OverviewTab patient={patient} />}
+        {tab === 'diet'      && <DietTab patient={patient} professionalId={profile?.id} onUpdate={loadPatient} />}
+        {tab === 'meals'     && <MealsTab patient={patient} professionalId={profile?.id} />}
+        {tab === 'shopping'  && <ShoppingListTab patient={patient} professionalId={profile?.id} />}
+        {tab === 'weight'    && <WeightTab patient={patient} />}
+        {tab === 'meds'      && <MedsTab patient={patient} onUpdate={loadPatient} />}
+        {tab === 'access'    && <AccessTab patient={patient} onUpdate={loadPatient} />}
       </div>
     </ProLayout>
   )

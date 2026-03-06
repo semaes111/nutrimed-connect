@@ -11,6 +11,23 @@ import { getDietConfig, DAYS_ORDER, DAY_LABELS } from '../../../lib/diet/constan
 import { Calendar, AlertTriangle, Trash2, ChevronDown } from 'lucide-react'
 
 /**
+ * Trigger fire-and-forget de regeneración de lista de la compra.
+ * No bloquea la UX del profesional. Los errores son silenciosos.
+ */
+async function triggerShoppingRegen(patientId, professionalId) {
+  try {
+    const url = `${import.meta.env.VITE_SUPABASE_URL || 'https://bpazmmbjjducdmxgfoum.supabase.co'}/functions/v1/nm-shopping`
+    await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ patient_id: patientId, professional_id: professionalId }),
+    })
+  } catch {
+    // Silencioso — la lista de compra es secundaria, no interrumpe el flujo
+  }
+}
+
+/**
  * @param {{ patient: object, professionalId: string, onUpdate: Function }} props
  */
 export default function DietTab({ patient, professionalId, onUpdate }) {
@@ -79,6 +96,8 @@ export default function DietTab({ patient, professionalId, onUpdate }) {
       })
       if (error) throw error
       await Promise.all([loadWeekly(), loadBase()])
+      // 🛒 Regenerar lista de la compra en background
+      triggerShoppingRegen(patient.id, professionalId)
       // Notificar al padre (ProPatientDetail) para que recargue nm_patients.
       // Necesario si el componente padre deriva datos del campo diet_type del paciente.
       onUpdate()
@@ -107,6 +126,8 @@ export default function DietTab({ patient, professionalId, onUpdate }) {
       })
       if (error) throw error
       await loadWeekly()
+      // 🛒 Regenerar lista de la compra en background
+      triggerShoppingRegen(patient.id, professionalId)
       setEditingDay(null)
     } catch (err) {
       console.error('[DietTab] handleOverrideDay error:', err)
@@ -125,6 +146,8 @@ export default function DietTab({ patient, professionalId, onUpdate }) {
         p_day_of_week: day,
       })
       if (error) throw error
+      // 🛒 Regenerar lista de la compra en background
+      triggerShoppingRegen(patient.id, professionalId)
       await loadWeekly()
     } catch (err) {
       console.error('[DietTab] handleRemoveOverride error:', err)

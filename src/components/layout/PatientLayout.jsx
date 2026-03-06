@@ -1,5 +1,5 @@
 import { NavLink } from 'react-router-dom'
-import { LayoutDashboard, Scale, Pill, MessageCircle, LogOut, Sun, Moon } from 'lucide-react'
+import { LayoutDashboard, Scale, Pill, MessageCircle, ShoppingCart, LogOut, Sun, Moon } from 'lucide-react'
 import { useAuth } from '../../lib/AuthContext'
 import { useTheme } from '../../lib/ThemeContext'
 
@@ -63,6 +63,10 @@ export default function PatientLayout({ children, title, subtitle, rightAction }
         <NavLink to="/meds" className={({ isActive }) => isActive ? 'active' : ''}>
           <Pill size={20} />
           <span>Medicación</span>
+        </NavLink>
+        <NavLink to="/shopping" className={({ isActive }) => isActive ? 'active' : ''}>
+          <ShoppingCart size={20} />
+          <span>Compra</span>
         </NavLink>
         <NavLink to="/chat" className={({ isActive }) => isActive ? 'active' : ''}>
           <MessageCircle size={20} />

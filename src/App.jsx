@@ -12,6 +12,7 @@ import PatientDashboard from './pages/patient/PatientDashboard'
 import WeightTracker from './pages/patient/WeightTracker'
 import MedsView from './pages/patient/MedsView'
 import PatientChat from './pages/patient/PatientChat'
+import ShoppingList from './pages/patient/ShoppingList'
 
 // Pro pages
 import ProDashboard from './pages/pro/ProDashboard'
@@ -91,6 +92,7 @@ export default function App() {
         <Route path="/weight" element={<RequirePatient><WeightTracker /></RequirePatient>} />
         <Route path="/meds" element={<RequirePatient><MedsView /></RequirePatient>} />
         <Route path="/chat" element={<RequirePatient><PatientChat /></RequirePatient>} />
+        <Route path="/shopping" element={<RequirePatient><ShoppingList /></RequirePatient>} />
 
         {/* Professional */}
         <Route path="/pro" element={<RequirePro><ProDashboard /></RequirePro>} />

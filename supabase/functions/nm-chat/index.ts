@@ -116,31 +116,36 @@ Responde SOLO JSON válido, sin markdown, sin backticks:
 }
 
 // ─── FORMATTER SYSTEM PROMPT (recibe profesional via patientContext) ──
-const FORMATTER_SYSTEM = `Eres el asistente nutricional personal del paciente.
+const FORMATTER_SYSTEM = `Eres el asistente nutricional personal del paciente. Hablas de forma cercana, directa y natural — como lo haría un profesional de confianza en un chat, no como un sistema automático.
 
 JERARQUÍA DE FUENTES (OBLIGATORIA — seguir en este orden):
 1. MENÚ GUARDADO (etiquetado "MENÚ GUARDADO"): Datos personalizados por el profesional. Máxima prioridad.
-   - Las líneas "[INDICACIONES DEL DOCTOR PARA ESTE DÍA]" son instrucciones directas del profesional. SIEMPRE refléjalas cuando sean relevantes para la pregunta.
-2. DIETA ASIGNADA: Las líneas "[NOTA DEL PROFESIONAL]" son restricciones o ajustes específicos del doctor. OBLIGATORIO respetarlas y mencionarlas si el paciente pregunta por ese día o dieta.
+   - Las líneas "[INDICACIONES DEL DOCTOR PARA ESTE DÍA]" son instrucciones directas del profesional. SIEMPRE refléjalas cuando sean relevantes.
+2. DIETA ASIGNADA: Las líneas "[NOTA DEL PROFESIONAL]" son restricciones o ajustes específicos. OBLIGATORIO respetarlas.
 3. PLANTILLA BASE DE DIETA (etiquetado "PLANTILLA BASE"): Generada automáticamente. Usar cuando no hay menú guardado.
 4. ALIMENTOS PERMITIDOS POR CÓDIGO DE DIETA: Referencia de frecuencia y preparación.
 5. DESCRIPCIÓN DE DIETA: Para explicar en qué consiste su dieta si lo pregunta.
 6. HISTORIAL DE PESO: Solo para preguntas de progreso.
-7. DATOS DEL PROFESIONAL: Nombre y especialidad del profesional que le atiende — usar SOLO cuando el paciente pregunte directamente por él.
+7. DATOS DEL PROFESIONAL: Usar SOLO cuando el paciente pregunte directamente por él.
+
+REGLAS DE CONVERSACIÓN NATURAL (crítico):
+1. NUNCA repitas el nombre del paciente en cada mensaje. Úsalo como mucho UNA vez, solo si es el primer mensaje de la sesión o si añade calidez real. En respuestas de seguimiento dentro de la misma conversación, no lo uses.
+2. NUNCA empieces cada respuesta con "Hoy [día]". El contexto del día ya está establecido. Úsalo solo cuando sea imprescindible para distinguir entre días distintos. Si el paciente hace varias preguntas sobre el mismo día, no lo repitas.
+3. Responde como si fuera la continuación natural de una conversación — no como si fuera el primer mensaje de cada vez.
+4. Respuestas de seguimiento cortas ("y embutidos?", "y verdura?") merecen respuestas igual de directas y breves, sin volver a presentar el contexto completo.
+5. Máximo 3-4 frases por respuesta. Sin introducción innecesaria.
 
 REGLAS ABSOLUTAS:
 1. Las anotaciones del doctor ([NOTA DEL PROFESIONAL], [INDICACIONES DEL DOCTOR]) tienen prioridad absoluta.
-2. Si hay PLANTILLA BASE, úsala como referencia. NO digas "el doctor no ha configurado tu menú".
+2. Si hay PLANTILLA BASE, úsala. NO digas "el doctor no ha configurado tu menú".
 3. NUNCA uses conocimiento nutricional general externo. Solo los datos RAG.
 4. NUNCA prescribas medicación ni dosis.
 5. NUNCA diagnostiques ni prometas resultados.
-6. Usa tono cercano, profesional y conciso (máximo 3-4 frases).
-7. Si la pregunta es médica compleja di: "Eso mejor lo hablamos con el doctor en la próxima consulta.".
-8. Zero emojis. Texto natural, sin markdown, sin listas.
-9. Responde SIEMPRE en español.
-10. Preséntate como "tu asistente nutricional". Sin nombre propio.
-11. SOLO di "no encuentro tu dieta" si NO hay ni menú guardado NI plantilla base en los datos RAG.
-12. Si el paciente pregunta por su profesional, usa el nombre y especialidad que aparece en DATOS DEL PROFESIONAL. Si no están disponibles, di que no tienes esa información y que puede preguntarle directamente en consulta.`
+6. Si la pregunta es médica compleja di: "Eso mejor lo hablamos con el doctor en la próxima consulta.".
+7. Zero emojis. Texto natural, sin markdown, sin listas.
+8. Responde SIEMPRE en español.
+9. SOLO di "no encuentro tu dieta" si NO hay ni menú guardado NI plantilla base en los datos RAG.
+10. Si el paciente pregunta por su profesional, usa el nombre y especialidad que aparece en DATOS DEL PROFESIONAL.`
 
 // ─── ANTHROPIC API CALL ──────────────────────────────────────────────
 async function callAnthropic(
@@ -663,13 +668,13 @@ Deno.serve(async (req: Request) => {
     const classifyStart = Date.now()
     const classification = await classifyIntent(userMessage, patientContext)
     const classifyTime   = Date.now() - classifyStart
-    console.log(`[v16 Phase1] intent=${classification.intent} conf=${classification.confidence} (${classifyTime}ms)`)
+    console.log(`[v16.1 Phase1] intent=${classification.intent} conf=${classification.confidence} (${classifyTime}ms)`)
 
     // FASE 2: RAG (con template auto-fill cuando nm_daily_meals vacío)
     const ragStart   = Date.now()
     const ragContext = await fetchRAGContext(supabase, classification.intent, classification.entities, patientId)
     const ragTime    = Date.now() - ragStart
-    console.log(`[v16 Phase2] RAG ${ragContext.length} chars (${ragTime}ms)`)
+    console.log(`[v16.1 Phase2] RAG ${ragContext.length} chars (${ragTime}ms)`)
 
     // FASE 3: Formatear
     const formatStart = Date.now()
@@ -694,7 +699,7 @@ Deno.serve(async (req: Request) => {
     const formattedResponse = formatResult.text || 'Lo siento, no he podido procesar tu consulta.'
     const formatTime        = Date.now() - formatStart
     const totalTime         = Date.now() - startTime
-    console.log(`[v16 Phase3] format ${formatTime}ms | total ${totalTime}ms`)
+    console.log(`[v16.1 Phase3] format ${formatTime}ms | total ${totalTime}ms`)
 
     if (isDirectCall && conversationId) {
       await supabase.from('nm_chat_messages').insert({
@@ -708,7 +713,7 @@ Deno.serve(async (req: Request) => {
           models:     { classifier: MODEL_CLASSIFIER, formatter: MODEL_FORMATTER },
           timing:     { classify_ms: classifyTime, rag_ms: ragTime, format_ms: formatTime, total_ms: totalTime },
           rag_length: ragContext.length,
-          version: 'v16',
+          version: 'v16.1',
         }
       })
     }
@@ -732,20 +737,20 @@ Deno.serve(async (req: Request) => {
         },
         timing: { classify_ms: classifyTime, rag_ms: ragTime, format_ms: formatTime, total_ms: totalTime },
         models: { classifier: MODEL_CLASSIFIER, formatter: MODEL_FORMATTER },
-        version: 'v16',
+        version: 'v16.1',
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )
 
   } catch (error) {
-    console.error('[nm-chat v16] Fatal:', error)
+    console.error('[nm-chat v16.1] Fatal:', error)
     return new Response(
       JSON.stringify({
         content: 'Lo siento, ha habido un error. Inténtalo de nuevo.',
         message: 'Lo siento, ha habido un error. Inténtalo de nuevo.',
         error:   String(error),
         timing:  { total_ms: Date.now() - startTime },
-        version: 'v16',
+        version: 'v16.1',
       }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )

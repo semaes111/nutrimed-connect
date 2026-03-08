@@ -2,7 +2,9 @@ import 'jsr:@supabase/functions-js/edge-runtime.d.ts'
 import { createClient } from 'npm:@supabase/supabase-js@2'
 
 // ═══════════════════════════════════════════════════════════════════════
-// nm-scanner v1 — Análisis de etiquetas nutricionales
+// nm-scanner v2 — Fix prompt visión: jerarquía tabla nutricional explícita
+//   v1 confundía kcal/kJ (valor energético) con azúcares. El prompt ahora
+//   describe la estructura jerárquica y prohíbe usar calorías como azúcares.
 //
 // Pipeline de 4 fases:
 //   1. VISIÓN      — Haiku extrae azúcares/100g y categoría del producto
@@ -118,13 +120,33 @@ async function phaseVision(
   const system = `Eres un experto en lectura de tablas nutricionales de etiquetas de productos alimentarios.
 Responde ÚNICAMENTE con un objeto JSON válido, sin texto adicional, sin markdown, sin explicaciones.`
 
-  const userText = `Analiza esta etiqueta nutricional y extrae:
-1. product_category: describe el tipo de producto en 3-5 palabras (ej: "yogur natural desnatado", "pasta integral", "galletas avena miel")
-2. sugar_g_per_100: los gramos de AZÚCARES por 100g de producto. Encuéntralo en la tabla nutricional bajo "Hidratos de carbono / de los cuales azúcares" o "Carbohydrates / of which sugars" o "Glucides / dont sucres" o "Azúcares". Devuelve el número decimal (ej: 3.5) o null si no puedes leerlo.
-3. confidence: "high" si la imagen es nítida y encontraste el valor, "medium" si hay dudas menores, "low" si la imagen es borrosa o ilegible.
-4. raw_text_found: el texto literal tal como aparece en la etiqueta para el campo de azúcares (ej: "Azúcares 3,5 g"), o "" si no lo encontraste.
+  const userText = `Analiza esta etiqueta nutricional y extrae EXACTAMENTE los campos indicados.
 
-Responde SOLO con este JSON:
+ESTRUCTURA TÍPICA DE UNA TABLA NUTRICIONAL (por cada 100g/100ml):
+  Valor energético    → X kcal / Y kJ   ← ESTO SON CALORÍAS, NO AZÚCARES. IGNÓRALO.
+  Grasas              → X g
+    de las cuales saturadas → X g
+  Hidratos de carbono → X g             ← ESTE ES EL TOTAL DE CARBOHIDRATOS, NO AZÚCARES
+    de los cuales azúcares → X g        ← ✅ ESTE ES EL CAMPO QUE BUSCAS
+  Fibra alimentaria   → X g
+  Proteínas           → X g
+  Sal                 → X g
+
+REGLAS ESTRICTAS:
+- sugar_g_per_100 debe ser el valor de la fila "de los cuales azúcares" / "of which sugars" / "dont les sucres" / "davon Zucker"
+- NUNCA uses el valor energético (kcal, kJ) como azúcares
+- NUNCA uses el total de hidratos de carbono como azúcares
+- El valor de azúcares SIEMPRE es menor o igual al total de hidratos de carbono
+- En refrescos sin azúcar (Coca-Cola Zero, etc.) el valor correcto de azúcares es 0 o muy cercano a 0
+- Si el valor encontrado es mayor que 99 g/100g, es casi seguro que has leído calorías por error → devuelve null
+
+CAMPOS A EXTRAER:
+1. product_category: tipo de producto en 3-5 palabras (ej: "refresco cola sin azúcar", "yogur natural desnatado", "pasta integral seca")
+2. sugar_g_per_100: gramos de AZÚCARES por 100g — solo la fila "de los cuales azúcares". Número decimal o null si no lo encuentras.
+3. confidence: "high" si imagen nítida y valor encontrado con certeza, "medium" si dudas menores, "low" si imagen borrosa o ilegible.
+4. raw_text_found: texto literal de la etiqueta para ese campo (ej: "de los cuales azúcares 0 g"), o "" si no lo encontraste.
+
+Responde SOLO con este JSON sin ningún texto adicional:
 {"product_category": "...", "sugar_g_per_100": número_o_null, "confidence": "high|medium|low", "raw_text_found": "..."}`
 
   const raw = await callAnthropic(

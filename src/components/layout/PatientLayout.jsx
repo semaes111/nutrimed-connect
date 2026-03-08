@@ -1,5 +1,5 @@
-import { NavLink } from 'react-router-dom'
-import { LayoutDashboard, Scale, Pill, MessageCircle, ShoppingCart, LogOut, Sun, Moon } from 'lucide-react'
+import { NavLink, Link } from 'react-router-dom'
+import { LayoutDashboard, Scale, Pill, MessageCircle, ShoppingCart, Camera, LogOut, Sun, Moon } from 'lucide-react'
 import { useAuth } from '../../lib/AuthContext'
 import { useTheme } from '../../lib/ThemeContext'
 
@@ -49,6 +49,16 @@ export default function PatientLayout({ children, title, subtitle, rightAction }
       <main className="px-4 py-4 page-enter">
         {children}
       </main>
+
+      {/* Scanner FAB — flotante sobre el nav, no modifica el nav existente */}
+      <Link
+        to="/scanner"
+        className="scanner-fab"
+        title="Escanear etiqueta"
+        aria-label="Escanear etiqueta nutricional"
+      >
+        <Camera size={22} />
+      </Link>
 
       {/* Bottom nav */}
       <nav className="bottom-nav">

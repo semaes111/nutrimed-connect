@@ -13,6 +13,7 @@ import WeightTracker from './pages/patient/WeightTracker'
 import MedsView from './pages/patient/MedsView'
 import PatientChat from './pages/patient/PatientChat'
 import ShoppingList from './pages/patient/ShoppingList'
+import LabelScanner from './pages/patient/LabelScanner'
 
 // Pro pages
 import ProDashboard from './pages/pro/ProDashboard'
@@ -93,6 +94,7 @@ export default function App() {
         <Route path="/meds" element={<RequirePatient><MedsView /></RequirePatient>} />
         <Route path="/chat" element={<RequirePatient><PatientChat /></RequirePatient>} />
         <Route path="/shopping" element={<RequirePatient><ShoppingList /></RequirePatient>} />
+        <Route path="/scanner" element={<RequirePatient><LabelScanner /></RequirePatient>} />
 
         {/* Professional */}
         <Route path="/pro" element={<RequirePro><ProDashboard /></RequirePro>} />

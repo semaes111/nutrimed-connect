@@ -1,4 +1,4 @@
-import { NavLink, Link } from 'react-router-dom'
+import { NavLink } from 'react-router-dom'
 import { LayoutDashboard, Scale, Pill, MessageCircle, ShoppingCart, Camera, LogOut, Sun, Moon } from 'lucide-react'
 import { useAuth } from '../../lib/AuthContext'
 import { useTheme } from '../../lib/ThemeContext'
@@ -50,16 +50,6 @@ export default function PatientLayout({ children, title, subtitle, rightAction }
         {children}
       </main>
 
-      {/* Scanner FAB — flotante sobre el nav, no modifica el nav existente */}
-      <Link
-        to="/scanner"
-        className="scanner-fab"
-        title="Escanear etiqueta"
-        aria-label="Escanear etiqueta nutricional"
-      >
-        <Camera size={22} />
-      </Link>
-
       {/* Bottom nav */}
       <nav className="bottom-nav">
         <NavLink to="/dashboard" className={({ isActive }) => isActive ? 'active' : ''}>
@@ -73,6 +63,10 @@ export default function PatientLayout({ children, title, subtitle, rightAction }
         <NavLink to="/meds" className={({ isActive }) => isActive ? 'active' : ''}>
           <Pill size={20} />
           <span>Medicación</span>
+        </NavLink>
+        <NavLink to="/scanner" className={({ isActive }) => isActive ? 'active' : ''}>
+          <Camera size={20} />
+          <span>Scanner</span>
         </NavLink>
         <NavLink to="/shopping" className={({ isActive }) => isActive ? 'active' : ''}>
           <ShoppingCart size={20} />

@@ -10,6 +10,18 @@
 import { DAYS_ORDER, DIET_CODE_MAP, BREAKFAST_MAP } from './constants.js'
 
 /**
+ * Fallback: dietas con pocos platos en el catálogo heredan platos de una
+ * dieta compatible más amplia. Solo se usa cuando platos < 8.
+ * D10 (intermedio-integral) ← D01 (ig-medio, 23 platos)
+ * D08/D09 (rescate-proteica) ← D07 (rescate, 9 platos)
+ */
+const DIET_FALLBACK = {
+  'D08': 'D07',
+  'D09': 'D07',
+  'D10': 'D01',
+}
+
+/**
  * Construye el texto de desayuno a partir de una fila del catálogo de desayunos.
  * @param {object|null} bfRow - fila de nm_breakfast_catalog
  * @returns {string}
@@ -97,7 +109,17 @@ export function buildMealsFromTemplates(plans, savedMeals, mealCatalog, bfCatalo
 
     const bfName = BREAKFAST_MAP[code]
     const bfRow  = bfCatalog.find(b => b.name === bfName)
-    const platos    = mealCatalog.filter(m => m.diet_codes && m.diet_codes.includes(code))
+    let platos   = mealCatalog.filter(m => m.diet_codes && m.diet_codes.includes(code))
+    // Fallback: si el catálogo tiene < 8 platos, complementar con dieta compatible
+    if (platos.length < 8) {
+      const fallback = DIET_FALLBACK[code]
+      if (fallback) {
+        const extras = mealCatalog.filter(m =>
+          m.diet_codes && m.diet_codes.includes(fallback) && !platos.some(p => p.id === m.id)
+        )
+        platos = [...platos, ...extras]
+      }
+    }
     const half      = Math.ceil(platos.length / 2)
     // Rotación por día: cada día avanza 4 posiciones (nº de opciones mostradas)
     const lunchOff  = platos.length > 1 ? (dayIndex * 4) % platos.length : 0

@@ -29,11 +29,12 @@ export default function MealsTab({ patient, professionalId }) {
     if (!patient?.id) return
     setLoading(true)
     setLoadError(null)
-    const [mealsRes, plansRes, mealCatRes, bfastRes] = await Promise.all([
+    const [mealsRes, plansRes, mealCatRes, bfastRes, snackCatRes] = await Promise.all([
       supabase.from('nm_daily_meals').select('*').eq('patient_id', patient.id).eq('is_active', true),
       supabase.from('nm_diet_plans').select('*').eq('patient_id', patient.id).eq('is_active', true),
       supabase.from('nm_meal_catalog').select('*').order('name'),
       supabase.from('nm_breakfast_catalog').select('*'),
+      supabase.from('nm_snack_catalog').select('*'),
     ])
     if (mealsRes.error || plansRes.error || mealCatRes.error || bfastRes.error) {
       const err = mealsRes.error || plansRes.error || mealCatRes.error || bfastRes.error
@@ -45,7 +46,7 @@ export default function MealsTab({ patient, professionalId }) {
     ;(mealsRes.data || []).forEach(m => { savedMealsMap[m.day_of_week] = m })
 
     const { mealsMap, autoFilled: af } = buildMealsFromTemplates(
-      plansRes.data || [], savedMealsMap, mealCatRes.data || [], bfastRes.data || []
+      plansRes.data || [], savedMealsMap, mealCatRes.data || [], bfastRes.data || [], snackCatRes.data || []
     )
     setMeals(mealsMap)
     setAutoFilled(af)

@@ -78,6 +78,71 @@ export function buildSnackTemplate(code) {
 }
 
 /**
+ * Extrae ítems individuales de un campo de texto separado por comas/puntos.
+ * @param {string} text
+ * @returns {string[]}
+ */
+function splitItems(text) {
+  if (!text) return []
+  return text.split(/[,.]/).map(s => s.trim()).filter(s => s.length > 2)
+}
+
+/**
+ * Construye texto de snack variado por día a partir de nm_snack_catalog.
+ * Cada día rota los ítems de frutas, frutos secos, lácteos y otros.
+ * Media mañana y merienda usan offsets distintos para no repetir.
+ *
+ * @param {object[]} snackRows   - filas de nm_snack_catalog para el diet_code
+ * @param {number}   dayIndex    - 0=lunes, 6=domingo
+ * @param {boolean}  isAfternoon - true = merienda (offset +3)
+ * @returns {string}
+ */
+export function buildSnackFromCatalog(snackRows, dayIndex, isAfternoon = false) {
+  if (!snackRows || snackRows.length === 0) return ''
+  const row = snackRows[dayIndex % snackRows.length]
+  const offset = isAfternoon ? 3 : 0
+
+  const lines = []
+  const fruits = splitItems(row.fruits)
+  const nuts   = splitItems(row.nuts)
+  const dairy  = splitItems(row.dairy)
+  const others = splitItems(row.others)
+
+  if (fruits.length > 0) {
+    const off = (dayIndex + offset) % fruits.length
+    const picked = []
+    for (let i = 0; i < Math.min(3, fruits.length); i++) picked.push(fruits[(off + i) % fruits.length])
+    lines.push(`🍎 Frutas: ${picked.join(', ')}`)
+  }
+  if (dairy.length > 0) {
+    const off = (dayIndex + offset) % dairy.length
+    lines.push(`🥛 Lácteos: ${dairy[off]}`)
+  }
+  if (nuts.length > 0) {
+    const off = (dayIndex + offset) % nuts.length
+    const picked = []
+    for (let i = 0; i < Math.min(2, nuts.length); i++) picked.push(nuts[(off + i) % nuts.length])
+    lines.push(`🥜 Frutos secos: ${picked.join(', ')}`)
+  }
+  if (others.length > 0) {
+    const off = (dayIndex + offset) % others.length
+    const picked = []
+    for (let i = 0; i < Math.min(2, others.length); i++) picked.push(others[(off + i) % others.length])
+    lines.push(`➕ Opciones: ${picked.join(', ')}`)
+  }
+  if (row.bread && !row.bread.toUpperCase().includes('PROHIBIDO')) {
+    const bread = splitItems(row.bread)
+    const toppings = splitItems(row.toppings)
+    if (bread.length > 0 && toppings.length > 0) {
+      const bOff = (dayIndex + offset) % bread.length
+      const tOff = (dayIndex + offset) % toppings.length
+      lines.push(`🍞 Tostada: ${bread[bOff]} + ${toppings[tOff]}`)
+    }
+  }
+  return lines.join('\n')
+}
+
+/**
  * Genera el mapa completo de menús para todos los días de la semana.
  * Respeta los registros existentes en nm_daily_meals si tienen contenido real.
  * Para los días sin datos guardados, auto-rellena desde las plantillas de dieta.
@@ -86,9 +151,10 @@ export function buildSnackTemplate(code) {
  * @param {object}   savedMeals  - { [day_of_week]: nm_daily_meals row }
  * @param {object[]} mealCatalog - nm_meal_catalog completo
  * @param {object[]} bfCatalog   - nm_breakfast_catalog completo
+ * @param {object[]} snackCatalog - nm_snack_catalog completo (opcional)
  * @returns {{ mealsMap: object, autoFilled: object }}
  */
-export function buildMealsFromTemplates(plans, savedMeals, mealCatalog, bfCatalog) {
+export function buildMealsFromTemplates(plans, savedMeals, mealCatalog, bfCatalog, snackCatalog = []) {
   const result     = {}
   const autoFilled = {}
 
@@ -125,13 +191,17 @@ export function buildMealsFromTemplates(plans, savedMeals, mealCatalog, bfCatalo
     const lunchOff  = platos.length > 1 ? (dayIndex * 4) % platos.length : 0
     const dinnerOff = platos.length > 1 ? (lunchOff + half) % platos.length : 0
 
+    const snackRows = snackCatalog.filter(s => s.diet_codes && s.diet_codes.includes(code))
+    const snackMorning   = buildSnackFromCatalog(snackRows, dayIndex, false)  || buildSnackTemplate(code)
+    const snackAfternoon = buildSnackFromCatalog(snackRows, dayIndex, true)   || buildSnackTemplate(code)
+
     result[day] = {
       day_of_week:     day,
       breakfast:       buildBreakfastTemplate(bfRow),
       lunch:           buildLunchDinnerTemplate(platos, lunchOff),
       dinner:          buildLunchDinnerTemplate(platos, dinnerOff),
-      snack_morning:   buildSnackTemplate(code),
-      snack_afternoon: buildSnackTemplate(code),
+      snack_morning:   snackMorning,
+      snack_afternoon: snackAfternoon,
     }
     autoFilled[day] = true
   })

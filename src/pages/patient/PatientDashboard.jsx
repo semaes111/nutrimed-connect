@@ -155,13 +155,14 @@ export default function PatientDashboard() {
     try {
       setLoading(true); setError(null)
       const pid = profile.id
-      const [plansRes, weightsRes, medsRes, mealsRes, mealCatRes, bfastRes] = await Promise.all([
+      const [plansRes, weightsRes, medsRes, mealsRes, mealCatRes, bfastRes, snackCatRes] = await Promise.all([
         supabase.from('nm_diet_plans').select('*').eq('patient_id', pid).eq('is_active', true),
         supabase.from('nm_weight_records').select('*').eq('patient_id', pid).order('date', { ascending: false }).order('created_at', { ascending: false }).limit(10),
         supabase.from('nm_medications').select('*').eq('patient_id', pid).eq('is_active', true),
         supabase.from('nm_daily_meals').select('*').eq('patient_id', pid).eq('is_active', true),
         supabase.from('nm_meal_catalog').select('*').order('name'),
         supabase.from('nm_breakfast_catalog').select('*'),
+        supabase.from('nm_snack_catalog').select('*'),
       ])
       if (plansRes.error || weightsRes.error || medsRes.error || mealsRes.error) {
         setError('Error al cargar los datos. Intenta de nuevo.'); setLoading(false); return
@@ -172,7 +173,7 @@ export default function PatientDashboard() {
       // Auto-fill desde plantillas de dieta para días sin datos guardados
       const { mealsMap } = buildMealsFromTemplates(
         plansRes.data || [], savedMealsMap,
-        mealCatRes.data || [], bfastRes.data || []
+        mealCatRes.data || [], bfastRes.data || [], snackCatRes.data || []
       )
       setData({ plans: plansRes.data || [], weights: weightsRes.data || [], meds: medsRes.data || [], meals: mealsMap })
     } catch { setError('Error inesperado. Intenta recargar la página.') }

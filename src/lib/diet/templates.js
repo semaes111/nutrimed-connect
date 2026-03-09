@@ -80,7 +80,7 @@ export function buildMealsFromTemplates(plans, savedMeals, mealCatalog, bfCatalo
   const result     = {}
   const autoFilled = {}
 
-  DAYS_ORDER.forEach(day => {
+  DAYS_ORDER.forEach((day, dayIndex) => {
     const saved = savedMeals[day]
     // Si hay datos reales guardados, usarlos tal cual
     if (saved && (saved.breakfast || saved.lunch || saved.dinner)) {
@@ -97,14 +97,17 @@ export function buildMealsFromTemplates(plans, savedMeals, mealCatalog, bfCatalo
 
     const bfName = BREAKFAST_MAP[code]
     const bfRow  = bfCatalog.find(b => b.name === bfName)
-    const platos = mealCatalog.filter(m => m.diet_codes && m.diet_codes.includes(code))
-    const half   = Math.ceil(platos.length / 2)
+    const platos    = mealCatalog.filter(m => m.diet_codes && m.diet_codes.includes(code))
+    const half      = Math.ceil(platos.length / 2)
+    // Rotación por día: cada día avanza 4 posiciones (nº de opciones mostradas)
+    const lunchOff  = platos.length > 1 ? (dayIndex * 4) % platos.length : 0
+    const dinnerOff = platos.length > 1 ? (lunchOff + half) % platos.length : 0
 
     result[day] = {
       day_of_week:     day,
       breakfast:       buildBreakfastTemplate(bfRow),
-      lunch:           buildLunchDinnerTemplate(platos),
-      dinner:          buildLunchDinnerTemplate(platos, half),
+      lunch:           buildLunchDinnerTemplate(platos, lunchOff),
+      dinner:          buildLunchDinnerTemplate(platos, dinnerOff),
       snack_morning:   buildSnackTemplate(code),
       snack_afternoon: buildSnackTemplate(code),
     }

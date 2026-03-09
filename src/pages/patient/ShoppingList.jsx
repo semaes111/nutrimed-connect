@@ -246,8 +246,11 @@ export default function ShoppingList() {
     const lines = CATEGORIES.flatMap(cat => {
       const items = list.items[cat.key]
       if (!items || items.length === 0) return []
-      return [`\n${cat.emoji} ${cat.label.toUpperCase()}`, ...items.map(i => `  · ${i}`)]
+      const selected = items.filter((_, idx) => checked.has(`${cat.key}-${idx}`))
+      if (selected.length === 0) return []
+      return [`\n${cat.emoji} ${cat.label.toUpperCase()}`, ...selected.map(i => `  · ${i}`)]
     })
+    if (lines.length === 0) return
     const text = ['🛒 Lista de la Compra — NutriMed Connect', ...lines].join('\n')
     navigator.clipboard.writeText(text).then(() => {
       setCopied(true)

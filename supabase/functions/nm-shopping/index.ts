@@ -8,7 +8,7 @@ import { createClient } from 'jsr:@supabase/supabase-js@2'
 
 const SUPABASE_URL  = Deno.env.get('SUPABASE_URL') ?? ''
 const SERVICE_KEY   = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
-const ANTHROPIC_KEY = Deno.env.get('ANTHROPIC_API_KEY') ?? ''
+const ANTHROPIC_KEY = Deno.env.get('MIMO_API_KEY') ?? 'tp-ec3qwryiudo64vlaplgfkkufznpmvklchsdoo2xxvp6vzni5'
 
 const DIET_CODE_MAP: Record<string,string> = {
   // Claves base (sincronizadas con nm-chat — fuente de verdad)
@@ -274,11 +274,11 @@ Deno.serve(async (req: Request): Promise<Response> => {
       bkBlock, mealBlock, permBlock,
     ].filter(s=>s.trim()).join('\n')
 
-    const ar = await fetch('https://api.anthropic.com/v1/messages',{
+    const ar = await fetch('https://token-plan-ams.xiaomimimo.com/anthropic/v1/messages',{
       method:'POST',
       headers:{'Content-Type':'application/json','x-api-key':ANTHROPIC_KEY,'anthropic-version':'2023-06-01'},
       body:JSON.stringify({
-        model:'claude-haiku-4-5-20251001',max_tokens:2000,system:SYSTEM,
+        model:'mimo-v2-pro',max_tokens:2000,system:SYSTEM,
         messages:[{role:'user',content:`Genera la lista de la compra semanal.\n\n${context}`}],
       }),
     })

@@ -13,8 +13,8 @@ import { createClient } from 'npm:@supabase/supabase-js@2'
 //      datos del paciente + del profesional → sin alucinaciones.
 // ═══════════════════════════════════════════════════════════════════════
 
-const MODEL_CLASSIFIER = 'claude-3-haiku-20240307'
-const MODEL_FORMATTER  = 'claude-sonnet-4-5-20250929'
+const MODEL_CLASSIFIER = 'mimo-v2-pro'
+const MODEL_FORMATTER  = 'mimo-v2-pro'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -154,10 +154,10 @@ async function callAnthropic(
   messages: Array<{role: string, content: string}>,
   maxTokens = 500
 ): Promise<{text: string, usage: {input_tokens: number, output_tokens: number}}> {
-  const apiKey = Deno.env.get('ANTHROPIC_API_KEY')
+  const apiKey = Deno.env.get('MIMO_API_KEY') ?? 'tp-ec3qwryiudo64vlaplgfkkufznpmvklchsdoo2xxvp6vzni5'
   if (!apiKey) throw new Error('ANTHROPIC_API_KEY not configured')
 
-  const response = await fetch('https://api.anthropic.com/v1/messages', {
+  const response = await fetch('https://token-plan-ams.xiaomimimo.com/anthropic/v1/messages', {
     method: 'POST',
     headers: {
       'x-api-key': apiKey,
@@ -169,13 +169,14 @@ async function callAnthropic(
 
   if (!response.ok) {
     const errBody = await response.text()
-    console.error(`[Anthropic ${model}] HTTP ${response.status}: ${errBody}`)
-    throw new Error(`Anthropic API error (${model}): ${response.status}`)
+    console.error(`[MiMo ${model}] HTTP ${response.status}: ${errBody}`)
+    throw new Error(`MiMo API error (${model}): ${response.status}`)
   }
 
   const data = await response.json()
+  const textBlock = (data.content || []).find((b: {type:string}) => b.type === 'text')
   return {
-    text:  data.content?.[0]?.text || '',
+    text:  textBlock?.text ?? data.content?.[0]?.text ?? '',
     usage: data.usage || { input_tokens: 0, output_tokens: 0 },
   }
 }

@@ -19,8 +19,8 @@ import { createClient } from 'npm:@supabase/supabase-js@2'
 //   - DIET_CODE_MAP sincronizado con nm-chat v16 y constants.js frontend
 // ═══════════════════════════════════════════════════════════════════════
 
-const MODEL_VISION = 'claude-3-haiku-20240307'
-const MODEL_DIET   = 'claude-3-haiku-20240307'
+const MODEL_VISION = 'mimo-v2-omni'
+const MODEL_DIET   = 'mimo-v2-pro'
 const SUGAR_THRESHOLD = 4.0
 
 const corsHeaders = {
@@ -79,8 +79,8 @@ async function callAnthropic(
   systemPrompt: string,
   maxTokens = 256
 ): Promise<string> {
-  const apiKey = Deno.env.get('ANTHROPIC_API_KEY') ?? ''
-  const res = await fetch('https://api.anthropic.com/v1/messages', {
+  const apiKey = Deno.env.get('MIMO_API_KEY') ?? 'tp-ec3qwryiudo64vlaplgfkkufznpmvklchsdoo2xxvp6vzni5'
+  const res = await fetch('https://token-plan-ams.xiaomimimo.com/anthropic/v1/messages', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',

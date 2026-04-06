@@ -73,8 +73,8 @@ interface ScanResponse {
   confidence: string
 }
 
-// ─── Llamada a Anthropic API ───────────────────────────────────────────
-async function callAnthropic(
+// ─── Llamada a MiMo API ───────────────────────────────────────────
+async function callMiMo(
   messages: object[],
   systemPrompt: string,
   maxTokens = 256
@@ -96,7 +96,7 @@ async function callAnthropic(
   })
   if (!res.ok) {
     const err = await res.text()
-    throw new Error(`Anthropic API error ${res.status}: ${err}`)
+    throw new Error(`MiMo API error ${res.status}: ${err}`)
   }
   const data = await res.json()
   return data.content?.[0]?.text ?? ''
@@ -149,7 +149,7 @@ CAMPOS A EXTRAER:
 Responde SOLO con este JSON sin ningún texto adicional:
 {"product_category": "...", "sugar_g_per_100": número_o_null, "confidence": "high|medium|low", "raw_text_found": "..."}`
 
-  const raw = await callAnthropic(
+  const raw = await callMiMo(
     [
       {
         role: 'user',
@@ -252,7 +252,7 @@ Sé permisivo con las equivalencias — si el producto es claramente una versió
 Responde SOLO con este JSON:
 {"in_diet": true_o_false, "matched_food": "nombre_del_alimento_coincidente_o_null"}`
 
-  const raw = await callAnthropic(
+  const raw = await callMiMo(
     [{ role: 'user', content: userText }],
     system,
     150

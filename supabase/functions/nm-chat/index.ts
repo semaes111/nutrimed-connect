@@ -147,15 +147,15 @@ REGLAS ABSOLUTAS:
 9. SOLO di "no encuentro tu dieta" si NO hay ni menú guardado NI plantilla base en los datos RAG.
 10. Si el paciente pregunta por su profesional, usa el nombre y especialidad que aparece en DATOS DEL PROFESIONAL.`
 
-// ─── ANTHROPIC API CALL ──────────────────────────────────────────────
-async function callAnthropic(
+// ─── MiMo API CALL ──────────────────────────────────────────────
+async function callMiMo(
   model: string,
   systemPrompt: string,
   messages: Array<{role: string, content: string}>,
   maxTokens = 500
 ): Promise<{text: string, usage: {input_tokens: number, output_tokens: number}}> {
   const apiKey = Deno.env.get('MIMO_API_KEY') ?? 'tp-ec3qwryiudo64vlaplgfkkufznpmvklchsdoo2xxvp6vzni5'
-  if (!apiKey) throw new Error('ANTHROPIC_API_KEY not configured')
+  if (!apiKey) throw new Error('MIMO API key not configured')
 
   const response = await fetch('https://token-plan-ams.xiaomimimo.com/anthropic/v1/messages', {
     method: 'POST',
@@ -187,7 +187,7 @@ async function classifyIntent(
   patientContext: string
 ): Promise<{intent: string, entities: Record<string, string>, confidence: string}> {
   const prompt = buildClassifierPrompt(message, patientContext)
-  const result = await callAnthropic(
+  const result = await callMiMo(
     MODEL_CLASSIFIER,
     'Eres un clasificador JSON. Responde SOLO JSON válido.',
     [{role: 'user', content: prompt}],
@@ -696,7 +696,7 @@ Deno.serve(async (req: Request) => {
       }
     ]
 
-    const formatResult      = await callAnthropic(MODEL_FORMATTER, FORMATTER_SYSTEM, formatterMessages, 600)
+    const formatResult      = await callMiMo(MODEL_FORMATTER, FORMATTER_SYSTEM, formatterMessages, 600)
     const formattedResponse = formatResult.text || 'Lo siento, no he podido procesar tu consulta.'
     const formatTime        = Date.now() - formatStart
     const totalTime         = Date.now() - startTime

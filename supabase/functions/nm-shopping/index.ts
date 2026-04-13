@@ -1,5 +1,6 @@
-// supabase/functions/nm-shopping/index.ts  v7
-// allowedSet: SOLO food_knowledge + breakfast_catalog (NO meal_catalog)
+// supabase/functions/nm-shopping/index.ts  v7.5-mimo
+// FIX: max_tokens 2000→8192 (MiMo thinking blocks consumed all tokens)
+// FIX: defensive text block parser — .find(type=text) instead of content[0].text
 // Pipeline: allowedSet filter → dedup cross-cat → cleanup categorías → rescue legumbres → consolidate water
 // Fixes: Nata/Ricota eliminados (origen meal_catalog), Yogur edulcorado, Verduras variadas, Cereal integral
 
@@ -238,7 +239,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
       ['drinks','bread','toppings','dairy','fruits','extras'].map(k => b[k]??'').filter(Boolean)
     )
     const allowedSet = buildAllowedSet(fkRows, bkFields)
-    console.log(`[nm-shopping v7] allowedSet size: ${allowedSet.size}`)
+    console.log(`[nm-shopping v7.5] allowedSet size: ${allowedSet.size}`)
 
     const dietSummary = (dietPlans ?? []).map((p:Record<string,string>) =>
       `${p.day_of_week==='todos'?'TODOS LOS DÍAS':p.day_of_week.toUpperCase()}: ${p.diet_name??p.diet_type}`
@@ -278,15 +279,27 @@ Deno.serve(async (req: Request): Promise<Response> => {
       method:'POST',
       headers:{'Content-Type':'application/json','x-api-key':MIMO_KEY,'anthropic-version':'2023-06-01'},
       body:JSON.stringify({
-        model:'mimo-v2-pro',max_tokens:2000,system:SYSTEM,
+        model:'mimo-v2-pro',max_tokens:8192,system:SYSTEM,
         messages:[{role:'user',content:`Genera la lista de la compra semanal.\n\n${context}`}],
       }),
     })
-    if (!ar.ok) return new Response(JSON.stringify({error:'Error IA'}),{status:502,headers:{...cors,'Content-Type':'application/json'}})
-    const raw = ((await ar.json())?.content?.[0]?.text??'{}').replace(/```json|```/g,'').trim()
+    if (!ar.ok) {
+      const errText = await ar.text()
+      console.error(`[nm-shopping v7.5] MiMo HTTP ${ar.status}: ${errText.slice(0,300)}`)
+      return new Response(JSON.stringify({error:'Error IA',status:ar.status}),{status:502,headers:{...cors,'Content-Type':'application/json'}})
+    }
+    const arData = await ar.json()
+    console.log(`[nm-shopping v7.5] MiMo response: stop=${arData.stop_reason} usage=${JSON.stringify(arData.usage)} blocks=${(arData.content||[]).map((b:{type:string,text?:string})=>`${b.type}:${(b.text||'').length}`).join(',')}`)
+    // MiMo devuelve bloques thinking+text — extraer solo el text
+    const textBlock = (arData.content || []).find((b: {type:string}) => b.type === 'text')
+    if (!textBlock || !textBlock.text) {
+      console.error(`[nm-shopping v7.5] NO text block — stop_reason=${arData.stop_reason}, blocks=${JSON.stringify((arData.content||[]).map((b:{type:string,text?:string})=>({type:b.type,len:b.text?.length})))}`)
+      return new Response(JSON.stringify({error:'IA sin respuesta',stop:arData.stop_reason,blocks:(arData.content||[]).length,usage:arData.usage}),{status:502,headers:{...cors,'Content-Type':'application/json'}})
+    }
+    const raw = textBlock.text.replace(/```json|```/g,'').trim()
 
     let parsed: Record<string,unknown> = {}
-    try { parsed = JSON.parse(raw) } catch(e) { console.error('[v7] parse:',e) }
+    try { parsed = JSON.parse(raw) } catch(e) { console.error('[nm-shopping v7.5] parse:',e,'raw:',raw.slice(0,200)) }
     const rawItems: Items = {} as Items
     for (const cat of CATEGORIES) {
       rawItems[cat] = Array.isArray(parsed[cat])
@@ -298,7 +311,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
     for (const cat of CATEGORIES) {
       filtered[cat] = rawItems[cat].filter(item => {
         const ok = isAllowed(item, allowedSet)
-        if (!ok) { console.log(`[v7] REMOVED [${cat}] "${item}"`); removed++ }
+        if (!ok) { console.log(`[v7.5] REMOVED [${cat}] "${item}"`); removed++ }
         return ok
       })
     }
@@ -316,12 +329,12 @@ Deno.serve(async (req: Request): Promise<Response> => {
     if (ie) return new Response(JSON.stringify({error:'Error al guardar'}),{status:500,headers:{...cors,'Content-Type':'application/json'}})
 
     const total = Object.values(items).reduce((a,v)=>a+v.length,0)
-    console.log(`[nm-shopping v7] OK items=${total} removed=${removed} id=${newList.id}`)
+    console.log(`[nm-shopping v7.5] OK items=${total} removed=${removed} id=${newList.id}`)
     return new Response(JSON.stringify({success:true,id:newList.id,total_items:total,removed}),
       {status:200,headers:{...cors,'Content-Type':'application/json'}})
 
   } catch(err) {
-    console.error('[nm-shopping v7] unexpected:',err)
+    console.error('[nm-shopping v7.5] unexpected:',err)
     return new Response(JSON.stringify({error:'Error interno'}),{status:500,headers:{...cors,'Content-Type':'application/json'}})
   }
 })

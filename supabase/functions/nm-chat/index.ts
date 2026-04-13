@@ -191,7 +191,7 @@ async function classifyIntent(
     MODEL_CLASSIFIER,
     'Eres un clasificador JSON. Responde SOLO JSON válido.',
     [{role: 'user', content: prompt}],
-    150
+    300
   )
   try {
     let cleaned = result.text.trim()
@@ -696,7 +696,7 @@ Deno.serve(async (req: Request) => {
       }
     ]
 
-    const formatResult      = await callMiMo(MODEL_FORMATTER, FORMATTER_SYSTEM, formatterMessages, 600)
+    const formatResult      = await callMiMo(MODEL_FORMATTER, FORMATTER_SYSTEM, formatterMessages, 1200)
     const formattedResponse = formatResult.text || 'Lo siento, no he podido procesar tu consulta.'
     const formatTime        = Date.now() - formatStart
     const totalTime         = Date.now() - startTime

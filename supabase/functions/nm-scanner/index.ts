@@ -2,7 +2,7 @@ import 'jsr:@supabase/functions-js/edge-runtime.d.ts'
 import { createClient } from 'npm:@supabase/supabase-js@2'
 
 // ═══════════════════════════════════════════════════════════════════════
-// nm-scanner v2 — Fix prompt visión: jerarquía tabla nutricional explícita
+// nm-scanner v2.1 — Fix parser thinking blocks + modelo parametrizable
 //   v1 confundía kcal/kJ (valor energético) con azúcares. El prompt ahora
 //   describe la estructura jerárquica y prohíbe usar calorías como azúcares.
 //
@@ -77,7 +77,8 @@ interface ScanResponse {
 async function callMiMo(
   messages: object[],
   systemPrompt: string,
-  maxTokens = 256
+  maxTokens = 256,
+  model = MODEL_VISION
 ): Promise<string> {
   const apiKey = Deno.env.get('MIMO_API_KEY') ?? 'tp-ec3qwryiudo64vlaplgfkkufznpmvklchsdoo2xxvp6vzni5'
   const res = await fetch('https://token-plan-ams.xiaomimimo.com/anthropic/v1/messages', {
@@ -88,7 +89,7 @@ async function callMiMo(
       'anthropic-version': '2023-06-01',
     },
     body: JSON.stringify({
-      model: MODEL_VISION,
+      model,
       max_tokens: maxTokens,
       system: systemPrompt,
       messages,
@@ -99,7 +100,8 @@ async function callMiMo(
     throw new Error(`MiMo API error ${res.status}: ${err}`)
   }
   const data = await res.json()
-  return data.content?.[0]?.text ?? ''
+  const textBlock = (data.content || []).find((b: {type:string}) => b.type === 'text')
+  return textBlock?.text ?? data.content?.[0]?.text ?? ''
 }
 
 // ─── Parseo seguro de JSON desde respuesta de modelo ──────────────────
@@ -255,7 +257,8 @@ Responde SOLO con este JSON:
   const raw = await callMiMo(
     [{ role: 'user', content: userText }],
     system,
-    150
+    150,
+    MODEL_DIET
   )
 
   const parsed = safeParseJSON<DietResult>(raw)

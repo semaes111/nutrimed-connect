@@ -2,7 +2,7 @@ import 'jsr:@supabase/functions-js/edge-runtime.d.ts'
 import { createClient } from 'npm:@supabase/supabase-js@2'
 
 // ═══════════════════════════════════════════════════════════════════════
-// nm-scanner v2.1 — Fix parser thinking blocks + modelo parametrizable
+// nm-scanner v2.2 — Fix max_tokens for MiMo thinking blocks
 //   v1 confundía kcal/kJ (valor energético) con azúcares. El prompt ahora
 //   describe la estructura jerárquica y prohíbe usar calorías como azúcares.
 //
@@ -165,7 +165,7 @@ Responde SOLO con este JSON sin ningún texto adicional:
       },
     ],
     system,
-    300
+    2048
   )
 
   const parsed = safeParseJSON<VisionResult>(raw)
@@ -257,7 +257,7 @@ Responde SOLO con este JSON:
   const raw = await callMiMo(
     [{ role: 'user', content: userText }],
     system,
-    150,
+    1024,
     MODEL_DIET
   )
 

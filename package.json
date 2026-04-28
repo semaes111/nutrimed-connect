@@ -13,6 +13,11 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@capacitor/android": "^7.6.2",
+    "@capacitor/camera": "^7.0.5",
+    "@capacitor/core": "^7.6.2",
+    "@capacitor/local-notifications": "^7.0.6",
+    "@capgo/capacitor-updater": "^7.43.3",
     "@supabase/supabase-js": "^2.98.0",
     "date-fns": "^4.1.0",
     "lucide-react": "^0.575.0",
@@ -22,6 +27,8 @@
     "recharts": "^3.7.0"
   },
   "devDependencies": {
+    "@capacitor/assets": "^3.0.5",
+    "@capacitor/cli": "^7.6.2",
     "@tailwindcss/vite": "^4.2.1",
     "@vitejs/plugin-react": "^5.1.4",
     "autoprefixer": "^10.4.27",

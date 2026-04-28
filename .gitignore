@@ -1,6 +1,28 @@
-node_modules
-dist
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+
+# Env files (sensitive)
 .env
 .env.local
+.env.*.local
+
+# OS / IDE
 .DS_Store
+.idea/
+.vscode/
 *.log
+
+# Android signing (NEVER commit keystores!)
+*.jks
+*.keystore
+keystore.b64
+android/app/keystore.jks
+
+# Android local config
+android/local.properties
+
+# Capacitor temp
+.capgo/

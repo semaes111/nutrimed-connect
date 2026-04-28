@@ -5,55 +5,21 @@
  * Doble criterio de aprobación: producto en dieta semanal + azúcares ≤ 4g/100g.
  *
  * Estados: idle → preview → analyzing → result → idle
- * Imagen: se redimensiona a ≤1024px antes de enviar (evita timeouts en EF).
- * Cámara: input[type=file] capture="environment" activa cámara trasera en móvil.
+ * Imagen: ≤1024px antes de enviar (evita timeouts en EF).
+ * Cámara/Galería: vía src/lib/nativeCamera.js que abstrae web vs Capacitor nativo.
+ *   - Web: <input type="file" capture="environment">
+ *   - Android nativo (HITO 5): @capacitor/camera Camera.getPhoto() con UX nativa.
  */
 
-import { useState, useRef } from 'react'
+import { useState } from 'react'
 import { useAuth } from '../../lib/AuthContext'
 import PatientLayout from '../../components/layout/PatientLayout'
 import ScannerResult from '../../components/patient/ScannerResult'
 import { usePageTheme } from '../../lib/usePageTheme'
 import { Camera, Image, RefreshCw, Loader2 } from 'lucide-react'
+import { pickFromCamera, pickFromGallery } from '../../lib/nativeCamera'
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || 'https://bpazmmbjjducdmxgfoum.supabase.co'
-
-// ─── Resize de imagen a ≤1024px, jpeg 0.85 ─────────────────────────────
-function resizeImage(file) {
-  return new Promise((resolve, reject) => {
-    const img = new window.Image()
-    const objectUrl = URL.createObjectURL(file)
-
-    img.onload = () => {
-      URL.revokeObjectURL(objectUrl)
-      const MAX = 1024
-      const scale = Math.min(1, MAX / Math.max(img.width, img.height))
-      const w = Math.round(img.width * scale)
-      const h = Math.round(img.height * scale)
-      const canvas = document.createElement('canvas')
-      canvas.width = w
-      canvas.height = h
-      const ctx = canvas.getContext('2d')
-      ctx.drawImage(img, 0, 0, w, h)
-      canvas.toBlob(
-        (blob) => {
-          if (!blob) { reject(new Error('canvas.toBlob falló')); return }
-          const reader = new FileReader()
-          reader.onload = () => {
-            const base64 = reader.result.split(',')[1]
-            resolve({ base64, mimeType: 'image/jpeg' })
-          }
-          reader.onerror = reject
-          reader.readAsDataURL(blob)
-        },
-        'image/jpeg',
-        0.85
-      )
-    }
-    img.onerror = reject
-    img.src = objectUrl
-  })
-}
 
 // ─── Estados posibles ──────────────────────────────────────────────────
 // 'idle' | 'preview' | 'analyzing' | 'result'
@@ -64,47 +30,49 @@ export default function LabelScanner() {
 
   const [state, setState] = useState('idle')
   const [previewUrl, setPreviewUrl] = useState(null)
-  const [imageData, setImageData] = useState(null)  // { base64, mimeType }
+  // imageData = { base64, mimeType } listo para enviar al edge function
+  const [imageData, setImageData] = useState(null)
   const [result, setResult] = useState(null)
   const [error, setError] = useState(null)
 
-  const cameraInputRef = useRef(null)
-  const galleryInputRef = useRef(null)
-
-  // ─── Selección de imagen ─────────────────────────────────────────────
-  function handleFileSelected(e) {
-    const file = e.target.files?.[0]
-    if (!file) return
-    // Limpiar input para permitir reselección del mismo archivo
-    e.target.value = ''
-
-    const preview = URL.createObjectURL(file)
-    setPreviewUrl(preview)
-    setImageData(null)  // se genera en el momento de analizar
-    setResult(null)
+  // ─── Selección de imagen vía wrapper (web o nativo según plataforma) ──
+  // Recibe del wrapper { base64, mimeType, width?, height? } o null si cancela.
+  // Construye el preview a partir del data URL para el WebView no perder la imagen
+  // tras GC (no podemos depender de un File object: en nativo no existe).
+  async function handlePick(source) {
     setError(null)
-    setState('preview')
-
-    // Almacenamos el archivo para procesarlo al pulsar Analizar
-    setImageData({ file })
+    try {
+      const picked = source === 'camera'
+        ? await pickFromCamera()
+        : await pickFromGallery()
+      if (!picked) return // usuario canceló
+      const { base64, mimeType } = picked
+      // Construir data URL para el preview (compatible web + nativo)
+      const dataUrl = `data:${mimeType};base64,${base64}`
+      setPreviewUrl(dataUrl)
+      setImageData({ base64, mimeType })
+      setResult(null)
+      setState('preview')
+    } catch (err) {
+      console.error('[LabelScanner] pick error:', err)
+      setError('No se pudo capturar la imagen. Inténtalo de nuevo.')
+    }
   }
 
   // ─── Análisis ────────────────────────────────────────────────────────
+  // imageData ya viene con {base64, mimeType} del wrapper — sin resize aquí.
   async function handleAnalyze() {
-    if (!imageData?.file) return
+    if (!imageData?.base64) return
     setState('analyzing')
     setError(null)
 
     try {
-      // Resize + base64
-      const { base64, mimeType } = await resizeImage(imageData.file)
-
       const res = await fetch(`${SUPABASE_URL}/functions/v1/nm-scanner`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          image_base64: base64,
-          mime_type: mimeType,
+          image_base64: imageData.base64,
+          mime_type: imageData.mimeType,
           patient_id: profile.id,
         }),
       })
@@ -123,7 +91,7 @@ export default function LabelScanner() {
 
   // ─── Reset ───────────────────────────────────────────────────────────
   function handleReset() {
-    if (previewUrl) URL.revokeObjectURL(previewUrl)
+    // No revokeObjectURL: ahora previewUrl es un data URL, no un blob URL.
     setPreviewUrl(null)
     setImageData(null)
     setResult(null)
@@ -170,9 +138,9 @@ export default function LabelScanner() {
 
           {/* Botones de acción */}
           <div className="flex flex-col gap-3 w-full">
-            {/* Cámara (activa cámara trasera en móvil) */}
+            {/* Cámara: en web abre <input capture>, en nativo abre cámara del SO */}
             <button
-              onClick={() => cameraInputRef.current?.click()}
+              onClick={() => handlePick('camera')}
               className="w-full py-3.5 rounded-[14px] font-bold text-[14px] transition-all duration-200 flex items-center justify-center gap-2.5"
               style={{
                 background: tc.isDark ? '#2DD4BF' : '#0D9488',
@@ -184,9 +152,9 @@ export default function LabelScanner() {
               Hacer foto
             </button>
 
-            {/* Galería */}
+            {/* Galería: en web abre <input>, en nativo abre picker de fotos */}
             <button
-              onClick={() => galleryInputRef.current?.click()}
+              onClick={() => handlePick('gallery')}
               className="w-full py-3 rounded-[14px] font-semibold text-[13px] transition-all duration-200 flex items-center justify-center gap-2.5"
               style={{
                 background: tc.cardInsetBg,
@@ -198,23 +166,6 @@ export default function LabelScanner() {
               Subir desde galería
             </button>
           </div>
-
-          {/* Inputs ocultos */}
-          <input
-            ref={cameraInputRef}
-            type="file"
-            accept="image/*"
-            capture="environment"
-            className="hidden"
-            onChange={handleFileSelected}
-          />
-          <input
-            ref={galleryInputRef}
-            type="file"
-            accept="image/*"
-            className="hidden"
-            onChange={handleFileSelected}
-          />
         </div>
       )}
 

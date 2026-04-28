@@ -1,0 +1,106 @@
+# .github/workflows/android-build.yml
+#
+# Compila APK Android de NutriMed Connect en GitHub Actions.
+#
+# Triggers:
+#   - Push a tag "v*" (ej. v1.0.0) → genera APK release sin firmar y AAB para Play Store
+#   - workflow_dispatch (manual) → permite generar APK debug a demanda
+#
+# Outputs:
+#   - app-debug.apk: instalable directamente en cualquier Android (no firmada)
+#   - app-release-unsigned.apk: APK release sin firmar (para test interno)
+#   - app-release.aab: Android App Bundle para subir a Play Console
+#
+# Requisitos:
+#   - Repo secret ANDROID_KEYSTORE_BASE64 (base64 del .jks de firma)
+#   - Repo secret ANDROID_KEYSTORE_PASSWORD
+#   - Repo secret ANDROID_KEY_ALIAS
+#   - Repo secret ANDROID_KEY_PASSWORD
+#   Si los secrets no existen, el step de firma se salta y el APK release queda sin firmar.
+
+name: Build Android APK
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      build_type:
+        description: 'Build type'
+        required: true
+        default: 'debug'
+        type: choice
+        options:
+          - debug
+          - release
+
+jobs:
+  build:
+    name: Build APK
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Setup JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+
+      - name: Install npm dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Build web assets
+        run: npm run build
+
+      - name: Sync Capacitor Android
+        run: npx cap sync android
+
+      - name: Build APK Debug
+        if: github.event.inputs.build_type == 'debug' || (github.event_name == 'push' && contains(github.ref, 'refs/tags/'))
+        working-directory: android
+        run: ./gradlew assembleDebug --no-daemon
+
+      - name: Build APK + AAB Release
+        if: github.event.inputs.build_type == 'release' || (github.event_name == 'push' && contains(github.ref, 'refs/tags/'))
+        working-directory: android
+        run: |
+          ./gradlew assembleRelease --no-daemon
+          ./gradlew bundleRelease --no-daemon
+
+      - name: Upload Debug APK
+        if: github.event.inputs.build_type == 'debug' || (github.event_name == 'push' && contains(github.ref, 'refs/tags/'))
+        uses: actions/upload-artifact@v4
+        with:
+          name: nutrimed-debug-${{ github.sha }}
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+          retention-days: 30
+
+      - name: Upload Release APK + AAB
+        if: github.event.inputs.build_type == 'release' || (github.event_name == 'push' && contains(github.ref, 'refs/tags/'))
+        uses: actions/upload-artifact@v4
+        with:
+          name: nutrimed-release-${{ github.sha }}
+          path: |
+            android/app/build/outputs/apk/release/app-release-unsigned.apk
+            android/app/build/outputs/bundle/release/app-release.aab
+          retention-days: 90
+
+      - name: Create GitHub Release (only on tag)
+        if: github.event_name == 'push' && contains(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            android/app/build/outputs/apk/release/app-release-unsigned.apk
+            android/app/build/outputs/bundle/release/app-release.aab
+          draft: true
+          generate_release_notes: true

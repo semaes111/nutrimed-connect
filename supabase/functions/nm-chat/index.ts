@@ -19,8 +19,8 @@ import { createClient } from 'npm:@supabase/supabase-js@2'
 //      datos del paciente + del profesional → sin alucinaciones.
 // ═══════════════════════════════════════════════════════════════════════
 
-const MODEL_CLASSIFIER = 'mimo-v2-pro'
-const MODEL_FORMATTER  = 'mimo-v2-pro'
+const MODEL_CLASSIFIER = 'mimo-v2.5'
+const MODEL_FORMATTER  = 'mimo-v2.5'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',

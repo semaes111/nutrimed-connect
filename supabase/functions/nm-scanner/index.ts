@@ -26,7 +26,7 @@ import { createClient } from 'npm:@supabase/supabase-js@2'
 // ═══════════════════════════════════════════════════════════════════════
 
 const MODEL_VISION = 'mimo-v2-omni'
-const MODEL_DIET   = 'mimo-v2-pro'
+const MODEL_DIET   = 'mimo-v2.5'
 const SUGAR_THRESHOLD = 4.0
 
 const corsHeaders = {

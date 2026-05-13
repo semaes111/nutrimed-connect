@@ -2,6 +2,12 @@ import 'jsr:@supabase/functions-js/edge-runtime.d.ts'
 import { createClient } from 'npm:@supabase/supabase-js@2'
 
 // ═══════════════════════════════════════════════════════════════════════
+// nm-scanner v2.3 — Rotate revoked MiMo API key fallback (2026-05-14)
+//   Old key tp-ec3qwry... was revoked, causing HTTP 401 from MiMo and
+//   HTTP 500 in this EF. Fallback updated to active key. TODO follow-up
+//   commit: remove hardcoded fallback entirely once MIMO_API_KEY secret
+//   is set in Supabase Edge Function vault.
+//
 // nm-scanner v2.2 — Fix max_tokens for MiMo thinking blocks
 //   v1 confundía kcal/kJ (valor energético) con azúcares. El prompt ahora
 //   describe la estructura jerárquica y prohíbe usar calorías como azúcares.
@@ -80,7 +86,7 @@ async function callMiMo(
   maxTokens = 256,
   model = MODEL_VISION
 ): Promise<string> {
-  const apiKey = Deno.env.get('MIMO_API_KEY') ?? 'tp-ec3qwryiudo64vlaplgfkkufznpmvklchsdoo2xxvp6vzni5'
+  const apiKey = Deno.env.get('MIMO_API_KEY') ?? 'tp-ee9sggxsekiv1h86ecfa4koyjp4s1mvwo1rtqppfgwxuaeud'
   const res = await fetch('https://token-plan-ams.xiaomimimo.com/anthropic/v1/messages', {
     method: 'POST',
     headers: {

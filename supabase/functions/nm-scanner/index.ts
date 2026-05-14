@@ -125,6 +125,16 @@ async function phaseVision(
   imageBase64: string,
   mimeType: string
 ): Promise<VisionResult> {
+  // ── Defensive sanitization (v2.5 fix) ────────────────────────────────
+  // Frontend may send base64 with data URI prefix ("data:image/jpeg;base64,XXX")
+  // or with non-canonical mime ("image/jpg" instead of "image/jpeg"). MiMo
+  // rejects both with HTTP 400, which surfaced as "Error interno del servidor"
+  // for users. Strip prefix and normalize mime here for compatibility.
+  const cleanBase64 = imageBase64.startsWith('data:')
+    ? imageBase64.replace(/^data:[^;,]+;base64,/, '')
+    : imageBase64
+  const cleanMime = mimeType === 'image/jpg' ? 'image/jpeg' : mimeType
+
   const system = `Eres un experto en lectura de tablas nutricionales de etiquetas de productos alimentarios.
 Responde ÚNICAMENTE con un objeto JSON válido, sin texto adicional, sin markdown, sin explicaciones.`
 
@@ -164,7 +174,7 @@ Responde SOLO con este JSON sin ningún texto adicional:
         content: [
           {
             type: 'image',
-            source: { type: 'base64', media_type: mimeType, data: imageBase64 },
+            source: { type: 'base64', media_type: cleanMime, data: cleanBase64 },
           },
           { type: 'text', text: userText },
         ],
@@ -375,7 +385,7 @@ Deno.serve(async (req: Request) => {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     })
   } catch (err) {
-    console.error('[nm-scanner v1] unexpected error:', err)
+    console.error('[nm-scanner v2.5] unexpected error:', err)
     return new Response(
       JSON.stringify({ error: 'Error interno del servidor' }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }

@@ -2,21 +2,35 @@ import 'jsr:@supabase/functions-js/edge-runtime.d.ts'
 import { createClient } from 'npm:@supabase/supabase-js@2'
 
 // ═══════════════════════════════════════════════════════════════════════
-// nm-scanner v2.3 — Rotate revoked MiMo API key fallback (2026-05-14)
-//   Old key tp-ec3qwry... was revoked, causing HTTP 401 from MiMo and
-//   HTTP 500 in this EF. Fallback updated to active key. TODO follow-up
-//   commit: remove hardcoded fallback entirely once MIMO_API_KEY secret
-//   is set in Supabase Edge Function vault.
+// nm-scanner v2.6 — Productos neutros: triple capa de defensa (2026-05-14)
+//   Bug: productos como sacarina/sal/especias/café sin azúcar resultaban
+//   "no autorizado en tu dieta" porque no estaban en nm_food_knowledge
+//   con diet_codes matching, aunque son universalmente compatibles.
+//
+//   Fix en 3 capas:
+//   A) BD: 17 nuevos rows en nm_food_knowledge con categorías 'edulcorante',
+//      'condimento' y bebidas neutras, todas con diet_codes D01-D10.
+//   B) Lógica: nuevo predicado isNeutralCategory() basado en regex aplicado
+//      en phaseVerdict. Si la categoría detectada por visión es neutra,
+//      bypass del criterio dieta; solo aplica umbral de azúcares.
+//   C) Prompt: phaseDietCheck instruido para devolver in_diet:true cuando
+//      el producto encaje en categorías neutras aunque no esté en la lista.
+//
+// nm-scanner v2.5 — Defensive sanitization for vision payload
+//   Strip data URI prefix + normalize image/jpg → image/jpeg.
+//
+// nm-scanner v2.4 — Migrate retired model mimo-v2-pro → mimo-v2.5
+//
+// nm-scanner v2.3 — Rotate revoked MiMo API key fallback
 //
 // nm-scanner v2.2 — Fix max_tokens for MiMo thinking blocks
-//   v1 confundía kcal/kJ (valor energético) con azúcares. El prompt ahora
-//   describe la estructura jerárquica y prohíbe usar calorías como azúcares.
 //
 // Pipeline de 4 fases:
-//   1. VISIÓN      — Haiku extrae azúcares/100g y categoría del producto
+//   1. VISIÓN      — mimo-v2-omni extrae azúcares/100g y categoría del producto
 //   2. DIETA       — Supabase carga alimentos permitidos (UNION semana)
-//   3. DIETÉTICO   — Haiku decide si el producto está en la dieta
+//   3. DIETÉTICO   — mimo-v2.5 decide si el producto está en la dieta
 //   4. VEREDICTO   — TypeScript aplica doble criterio (dieta + umbral 4g)
+//                    + bypass para categorías neutras (v2.6)
 //
 // Contratos:
 //   - verify_jwt: false (llamada directa desde frontend autenticado)
@@ -267,6 +281,19 @@ ${foodList}
 Considera equivalencias semánticas (ejemplos: "yogur desnatado natural" ≡ "Yogur natural sin azúcar", "pasta integral seca" ≡ "Pasta integral", "filete de pechuga" ≡ "Pechuga de pollo").
 Sé permisivo con las equivalencias — si el producto es claramente una versión del alimento permitido, marca in_diet: true.
 
+NOTA IMPORTANTE — Productos sin valor nutricional significativo:
+Los siguientes productos son SIEMPRE compatibles con cualquier dieta y deben marcarse SIEMPRE como in_diet: true, incluso si su nombre exacto NO aparece en la lista de alimentos permitidos:
+- Edulcorantes sin azúcar: sacarina, estevia/stevia, eritritol, sucralosa, aspartamo, ciclamato, xilitol y cualquier "edulcorante" o "endulzante" sin azúcar
+- Sal y sales: sal alimentaria, sal común, sal del Himalaya, sal marina, sal yodada, flor de sal
+- Especias y condimentos: pimienta (cualquier color), pimentón, comino, curry, cúrcuma, jengibre seco, canela, clavo, anís, nuez moscada, laurel, azafrán
+- Hierbas aromáticas: orégano, perejil, albahaca, tomillo, romero, cilantro, menta, eneldo, hierbabuena, salvia, estragón
+- Vinagres: de vino, de manzana, balsámico, de arroz, de jerez
+- Otros condimentos: mostaza sin azúcar añadido, salsa de soja sin azúcar, tabasco, salsa picante sin azúcar
+- Cítricos puros: zumo de limón natural, zumo de lima, ralladura
+- Bebidas neutras: agua (mineral, con gas, del grifo), café sin azúcar (negro, soluble, descafeinado, con leche sin azúcar), té sin azúcar (verde, rojo, negro), infusiones sin azúcar (manzanilla, poleo, rooibos, hierba luisa)
+
+Si el producto escaneado encaja en cualquiera de estas categorías neutras, in_diet: true es OBLIGATORIO aunque no esté en la lista.
+
 Responde SOLO con este JSON:
 {"in_diet": true_o_false, "matched_food": "nombre_del_alimento_coincidente_o_null"}`
 
@@ -279,6 +306,31 @@ Responde SOLO con este JSON:
 
   const parsed = safeParseJSON<DietResult>(raw)
   return parsed ?? { in_diet: false, matched_food: null }
+}
+
+// ─── Detector de categorías neutras (defensa de capa B) ───────────────
+// Productos sin valor nutricional significativo: edulcorantes, sales, especias,
+// vinagres, mostaza sin azúcar, café/té/infusiones sin azúcar, agua.
+// Si la categoría detectada por visión matchea, se bypasea el criterio de dieta
+// y solo se aplica el umbral de azúcares.
+//
+// La detección es en 2 fases:
+//   1) Palabra clave principal de un producto neutro
+//   2) Si la palabra es ambigua (té, café, mostaza, salsa), exigir "sin azúcar" cerca
+const NEUTRAL_STRONG_RX = /\b(edulcorante|edulcorantes|endulzante|sacarina|estevia|stevia|eritritol|sucralosa|aspartamo|ciclamato|xilitol|sal\s+(alimentaria|com[uú]n|del?\s+himalaya|marina|yodada|de\s+mesa)|pimienta|piment[oó]n|comino|curry|c[uú]rcuma|jengibre\s+(seco|en\s+polvo)|canela|clavo|an[ií]s|nuez\s+moscada|laurel|azafr[aá]n|or[ée]gano|perejil|albahaca|tomillo|romero|cilantro|menta|eneldo|hierbabuena|salvia|estrag[oó]n|hierba[s]?\s+aromática[s]?|especia[s]?|condimento[s]?|vinagre|tabasco|zumo\s+de\s+lim[oó]n|ralladura\s+de\s+lim[oó]n|infusi[oó]n|infusiones|manzanilla|poleo|rooibos|hierba\s+luisa|agua(\s+(mineral|con\s+gas|del\s+grifo))?)\b/i
+
+// Compounds que requieren "sin azúcar" cerca para evitar falsos positivos
+const NEUTRAL_COMPOUND_TERMS = /\b(t[eé]|caf[eé]|mostaza|salsa\s+de\s+soja|salsa\s+picante|lim[oó]n)\b/i
+const SIN_AZUCAR_RX = /\bsin\s+az[uú]car(\s+a[ñn]adido)?\b/i
+
+function isNeutralCategory(productCategory: string): boolean {
+  if (!productCategory) return false
+  const cat = productCategory.toLowerCase()
+  // Strong match: la palabra sola ya es claramente neutra
+  if (NEUTRAL_STRONG_RX.test(cat)) return true
+  // Compound: solo si "sin azúcar" aparece en algún punto de la categoría
+  if (NEUTRAL_COMPOUND_TERMS.test(cat) && SIN_AZUCAR_RX.test(cat)) return true
+  return false
 }
 
 // ─── FASE 4 — Veredicto final (TypeScript puro) ───────────────────────
@@ -317,6 +369,25 @@ function phaseVerdict(
 
   const sugarOk = sugar_g_per_100 <= SUGAR_THRESHOLD
   const dietOk  = diet.in_diet === true
+
+  // ── Capa B: bypass de criterio dieta para productos neutros ────────
+  // Si visión detectó una categoría sin valor nutricional significativo
+  // (edulcorante, sal, especias, vinagre, café sin azúcar, etc.), se
+  // aprueba SOLO con el criterio de azúcares. Cubre el caso en que el
+  // producto no aparezca en nm_food_knowledge pero la categoría sea
+  // claramente neutra (3a línea de defensa tras BD y prompt).
+  const isNeutral = isNeutralCategory(product_category)
+  if (isNeutral) {
+    return {
+      allowed: sugarOk,
+      reason: sugarOk ? 'approved' : 'sugar_too_high',
+      sugar_g_per_100,
+      threshold: SUGAR_THRESHOLD,
+      product_category,
+      matched_food: diet.matched_food || product_category,
+      confidence,
+    }
+  }
 
   let reason: Reason
   if (sugarOk && dietOk)   reason = 'approved'

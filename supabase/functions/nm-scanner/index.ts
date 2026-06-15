@@ -100,7 +100,7 @@ async function callMiMo(
   maxTokens = 256,
   model = MODEL_VISION
 ): Promise<string> {
-  const apiKey = Deno.env.get('MIMO_API_KEY') ?? 'tp-ee9sggxsekiv1h86ecfa4koyjp4s1mvwo1rtqppfgwxuaeud'
+  const apiKey = Deno.env.get('MIMO_API_KEY') ?? 'tp-eh19o4764rc76eon5v43r62a9lslxrbjrf0rmm7ovfewrkdl'
   const res = await fetch('https://token-plan-ams.xiaomimimo.com/anthropic/v1/messages', {
     method: 'POST',
     headers: {

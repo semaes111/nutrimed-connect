@@ -1,12 +1,12 @@
 import 'jsr:@supabase/functions-js/edge-runtime.d.ts'
 import { createClient } from 'npm:@supabase/supabase-js@2'
+import { DIET_CODE_MAP } from '../_shared/dietCodes.ts'
 
 // ═══════════════════════════════════════════════════════════════════════
 // nm-chat v16.2 — Rotate revoked MiMo API key fallback (2026-05-14)
 //   Old key tp-ec3qwry... was revoked, causing HTTP 401 from MiMo and
-//   HTTP 500 in this EF. Fallback updated to active key. TODO follow-up
-//   commit: remove hardcoded fallback entirely once MIMO_API_KEY secret
-//   is set in Supabase Edge Function vault.
+//   HTTP 500 in this EF. RESUELTO 2026-07-07: fallback eliminado — MIMO_API_KEY
+//   se lee exclusivamente del Vault de secrets (error explícito si falta).
 //
 // nm-chat v16 — Fix 4 bugs críticos:
 //   1. Doble persistencia: frontend+EdgeFn escribían duplicados → frontend
@@ -30,16 +30,6 @@ const corsHeaders = {
 
 // ─── MAPEOS DIET_CODE ──────────────────────────────────────────────────
 // Misma lógica que dietConfig.js frontend — fuente de verdad compartida
-const DIET_CODE_MAP: Record<string, string> = {
-  'metabolica': 'D06', 'rescate': 'D07', 'antioxidante': 'D05',
-  'antiinflamatoria': 'D03', 'keto-microbiota': 'D04',
-  'ig-bajo': 'D02', 'ig-medio': 'D01', 'intermedio-integral': 'D10',
-  'embarazo': 'D01', 'metabolica-antioxidante': 'D06',
-  'rescate-proteica': 'D07', 'rescate-proteica-v2': 'D08',
-  'rescate-proteica-v3': 'D09', 'antiinflamatoria-ig-bajo': 'D03',
-  'progresiva-ig-bajo': 'D02', 'progresiva-ig-medio': 'D01',
-  'progresiva-intermedio-integral': 'D10',
-}
 
 const BREAKFAST_MAP: Record<string, string> = {
   'D01': 'Completo IG Intermedio', 'D02': 'Completo IG Bajo',
@@ -160,8 +150,8 @@ async function callMiMo(
   messages: Array<{role: string, content: string}>,
   maxTokens = 500
 ): Promise<{text: string, usage: {input_tokens: number, output_tokens: number}}> {
-  const apiKey = Deno.env.get('MIMO_API_KEY') ?? 'tp-eh19o4764rc76eon5v43r62a9lslxrbjrf0rmm7ovfewrkdl'
-  if (!apiKey) throw new Error('MIMO API key not configured')
+  const apiKey = Deno.env.get('MIMO_API_KEY') ?? ''
+  if (!apiKey) throw new Error('MIMO_API_KEY secret no configurado en Supabase Vault')
 
   const response = await fetch('https://token-plan-ams.xiaomimimo.com/anthropic/v1/messages', {
     method: 'POST',

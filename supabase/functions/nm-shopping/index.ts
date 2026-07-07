@@ -3,19 +3,10 @@
 // Zero API calls, instant, 100% reliable
 import 'jsr:@supabase/functions-js/edge-runtime.d.ts'
 import { createClient } from 'jsr:@supabase/supabase-js@2'
+import { DIET_CODE_MAP } from '../_shared/dietCodes.ts'
 const SB_URL = Deno.env.get('SUPABASE_URL') ?? ''
 const SB_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
 
-const DIET_CODE_MAP: Record<string, string> = {
-  'metabolica': 'D06', 'rescate': 'D07', 'antioxidante': 'D05',
-  'antiinflamatoria': 'D03', 'keto-microbiota': 'D04',
-  'ig-bajo': 'D02', 'ig-medio': 'D01', 'intermedio-integral': 'D10',
-  'embarazo': 'D01', 'metabolica-antioxidante': 'D06',
-  'rescate-proteica': 'D07', 'rescate-proteica-v2': 'D08',
-  'rescate-proteica-v3': 'D09', 'antiinflamatoria-ig-bajo': 'D03',
-  'progresiva-ig-bajo': 'D02', 'progresiva-ig-medio': 'D01',
-  'progresiva-intermedio-integral': 'D10',
-}
 
 const BREAKFAST_NAME_MAP: Record<string, string> = {
   'D01': 'Completo IG Intermedio', 'D02': 'Completo IG Bajo',

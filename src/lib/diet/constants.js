@@ -59,3 +59,19 @@ export const BREAKFAST_MAP = {
   'D07': 'Acelerado Rescate',      'D08': 'Acelerado Rescate',
   'D09': 'Acelerado Rescate',      'D10': 'Completo IG Intermedio',
 }
+
+/** Categorías de la lista de la compra — orden, emojis y colores de acento (paciente + pro) */
+export const SHOPPING_CATEGORIES = [
+  { key: 'proteinas',  label: 'Proteínas',                     emoji: '🥩', color: '#FB923C' },
+  { key: 'hidratos',   label: 'Hidratos de carbono complejos', emoji: '🌾', color: '#FBBF24' },
+  { key: 'verduras',   label: 'Verduras y hortalizas',         emoji: '🥦', color: '#34D399' },
+  { key: 'frutas',     label: 'Frutas',                        emoji: '🍎', color: '#F472B6' },
+  { key: 'grasas',     label: 'Grasas saludables',             emoji: '🥑', color: '#A3E635' },
+  { key: 'lacteos',    label: 'Lácteos / Alternativas',        emoji: '🥛', color: '#818CF8' },
+  { key: 'legumbres',  label: 'Legumbres',                     emoji: '🫘', color: '#F97316' },
+  { key: 'especias',   label: 'Especias y condimentos',        emoji: '🌿', color: '#2DD4BF' },
+  { key: 'bebidas',    label: 'Bebidas',                       emoji: '💧', color: '#38BDF8' },
+  { key: 'snacks',     label: 'Snacks planificados',           emoji: '🥜', color: '#E879F9' },
+  { key: 'congelados', label: 'Congelados',                    emoji: '❄️', color: '#93C5FD' },
+  { key: 'conservas',  label: 'Conservas y embutidos',         emoji: '🥫', color: '#FCA5A5' },
+]

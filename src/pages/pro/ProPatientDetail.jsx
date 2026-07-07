@@ -14,7 +14,7 @@ import { useState, useEffect } from 'react'
 import { useParams, Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../lib/AuthContext'
 import { supabase } from '../../lib/supabase'
-import { getDaysRemaining } from '../../lib/diet/utils.js'
+import { getDaysRemaining } from '../../lib/dietConfig'
 import ProLayout from '../../components/layout/ProLayout'
 import MealsTab from '../../components/pro/MealsTab'
 

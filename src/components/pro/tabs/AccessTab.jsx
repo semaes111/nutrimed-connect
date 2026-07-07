@@ -7,7 +7,7 @@
 
 import { useState } from 'react'
 import { supabase } from '../../../lib/supabase.js'
-import { formatDate, getDaysRemaining } from '../../../lib/diet/utils.js'
+import { formatDate, getDaysRemaining } from '../../../lib/dietConfig'
 import { Key, Copy, Check, Lock, Unlock } from 'lucide-react'
 
 /** Genera un código de acceso aleatorio de 8 caracteres (sin caracteres ambiguos). */

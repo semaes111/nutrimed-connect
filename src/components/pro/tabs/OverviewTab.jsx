@@ -6,7 +6,7 @@
  */
 
 import { Scale, Brain, Heart, Activity, Calendar } from 'lucide-react'
-import { formatDate } from '../../../lib/diet/utils.js'
+import { formatDate } from '../../../lib/dietConfig'
 import { InfoItem, FamilyItem, LevelBar } from '../helpers/index.jsx'
 
 /**

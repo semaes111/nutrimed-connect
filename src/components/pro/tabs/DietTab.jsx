@@ -7,7 +7,7 @@
 
 import { useState, useEffect } from 'react'
 import { supabase } from '../../../lib/supabase.js'
-import { getDietConfig, DAYS_ORDER, DAY_LABELS } from '../../../lib/diet/constants.js'
+import { getDietConfig, DAYS_ORDER, DAY_LABELS } from '../../../lib/dietConfig'
 import { Calendar, AlertTriangle, Trash2, ChevronDown } from 'lucide-react'
 
 /**

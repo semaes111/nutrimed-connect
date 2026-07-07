@@ -7,7 +7,7 @@
 
 import { useState, useEffect } from 'react'
 import { supabase } from '../../../lib/supabase.js'
-import { formatDate, formatDateShort } from '../../../lib/diet/utils.js'
+import { formatDate, formatDateShort } from '../../../lib/dietConfig'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts'
 import { TrendingDown, Plus, Trash2 } from 'lucide-react'
 

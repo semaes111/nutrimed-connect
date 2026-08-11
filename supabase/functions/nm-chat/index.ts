@@ -3,6 +3,11 @@ import { createClient } from 'npm:@supabase/supabase-js@2'
 import { DIET_CODE_MAP } from '../_shared/dietCodes.ts'
 
 // ═══════════════════════════════════════════════════════════════════════
+// nm-chat v17.1 — Fix ReferenceError en intent info_paciente (2026-08-11)
+//   `patient` no existía en el scope de fetchRAGContext (la variable real
+//   es fullPat) → ReferenceError → error genérico al preguntar por perfil
+//   o dietista. Detectado con deno check durante la migración v17.
+//
 // nm-chat v17 — Migración MiMo → DeepSeek (2026-08-11)
 //   Xiaomi revocó la MIMO_API_KEY por TERCERA vez (401 Invalid API Key).
 //   Historial de incidencias MiMo: key revocada (mayo), modelos retirados
@@ -561,11 +566,17 @@ async function fetchRAGContext(
       }
 
       // Datos del profesional asignado
-      if (patient?.professional_id) {
+      // (v17.1) FIX: aquí se referenciaba `patient`, variable inexistente en
+      // el scope de fetchRAGContext → ReferenceError en runtime SIEMPRE que
+      // el intent era 'info_paciente' ("¿quién es mi dietista?", "¿cuánto he
+      // perdido?") → catch global → "Lo siento, ha habido un error".
+      // Bug presente desde v16 (marzo). La variable correcta es fullPat,
+      // cuyo select ya incluye professional_id.
+      if (fullPat?.professional_id) {
         const { data: prof } = await supabase
           .from('nm_professionals')
           .select('full_name, specialty, email')
-          .eq('id', patient.professional_id)
+          .eq('id', fullPat.professional_id)
           .single()
         if (prof) {
           ragParts.push(

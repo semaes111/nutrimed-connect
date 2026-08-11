@@ -3,6 +3,26 @@ import { createClient } from 'npm:@supabase/supabase-js@2'
 import { DIET_CODE_MAP } from '../_shared/dietCodes.ts'
 
 // ═══════════════════════════════════════════════════════════════════════
+// nm-scanner v3.0 — Migración MiMo → Gemini (visión) + DeepSeek (texto) (2026-08-11)
+//   Xiaomi revocó la MIMO_API_KEY por TERCERA vez (401 Invalid API Key).
+//   Historial MiMo: key revocada (mayo) → modelos retirados (julio) → key
+//   revocada de nuevo (agosto). Se abandona MiMo definitivamente.
+//
+//   Nueva arquitectura de proveedores:
+//   - FASE 1 VISIÓN → gemini-2.5-flash. La API oficial de DeepSeek NO acepta
+//     imágenes (bloques 'image' = "Not Supported" en su endpoint
+//     Anthropic-compat, api-docs.deepseek.com/guides/anthropic_api), así que
+//     la única fase que necesita ojos usa Gemini. JSON puro forzado vía
+//     responseMimeType + thinking desactivado (thinkingBudget: 0).
+//   - FASE 3 DIETÉTICO (solo texto) → deepseek-v4-flash vía endpoint
+//     Anthropic-compat (https://api.deepseek.com/anthropic/v1/messages):
+//     mismo wire format que usaba MiMo — solo cambia URL + secret + modelo.
+//     thinking:{type:'disabled'} obligatorio: deepseek-v4 razona por defecto
+//     y el thinking consume max_tokens antes de emitir texto (verificado).
+//
+//   Secrets nuevos en Vault: DEEPSEEK_API_KEY + GEMINI_API_KEY.
+//   MIMO_API_KEY queda obsoleto. CERO cambios de contrato con el frontend.
+//
 // nm-scanner v2.7 — Migrate retired mimo-v2-omni → mimo-v2.5 multimodal (2026-07-07)
 //   MiMo retiró mimo-v2-omni (HTTP 400 'Unsupported model') — el escáner
 //   llevaba caído en producción desde el retiro. /v1/models confirma catálogo
@@ -34,9 +54,9 @@ import { DIET_CODE_MAP } from '../_shared/dietCodes.ts'
 // nm-scanner v2.2 — Fix max_tokens for MiMo thinking blocks
 //
 // Pipeline de 4 fases:
-//   1. VISIÓN      — mimo-v2.5 (multimodal) extrae azúcares/100g y categoría del producto
+//   1. VISIÓN      — gemini-2.5-flash (multimodal) extrae azúcares/100g y categoría del producto
 //   2. DIETA       — Supabase carga alimentos permitidos (UNION semana)
-//   3. DIETÉTICO   — mimo-v2.5 decide si el producto está en la dieta
+//   3. DIETÉTICO   — deepseek-v4-flash decide si el producto está en la dieta
 //   4. VEREDICTO   — TypeScript aplica doble criterio (dieta + umbral 4g)
 //                    + bypass para categorías neutras (v2.6)
 //
@@ -47,8 +67,8 @@ import { DIET_CODE_MAP } from '../_shared/dietCodes.ts'
 //   - DIET_CODE_MAP compartido via ../_shared/dietCodes.ts (sincronizado con frontend)
 // ═══════════════════════════════════════════════════════════════════════
 
-const MODEL_VISION = 'mimo-v2.5'
-const MODEL_DIET   = 'mimo-v2.5'
+const MODEL_VISION = 'gemini-2.5-flash'
+const MODEL_DIET   = 'deepseek-v4-flash'
 const SUGAR_THRESHOLD = 4.0
 
 const corsHeaders = {
@@ -88,16 +108,20 @@ interface ScanResponse {
   confidence: string
 }
 
-// ─── Llamada a MiMo API ───────────────────────────────────────────
-async function callMiMo(
+// ─── Llamada a DeepSeek (texto, endpoint compatible con formato Anthropic) ──
+// thinking:{type:'disabled'} es OBLIGATORIO: deepseek-v4 razona por defecto
+// y los bloques thinking consumen max_tokens antes de emitir texto
+// (verificado en vivo 2026-08-11: sin desactivarlo, content llega SIN
+// bloque 'text' y stop_reason='max_tokens').
+async function callDeepSeek(
   messages: object[],
   systemPrompt: string,
   maxTokens = 256,
-  model = MODEL_VISION
+  model = MODEL_DIET
 ): Promise<string> {
-  const apiKey = Deno.env.get('MIMO_API_KEY') ?? ''
-  if (!apiKey) throw new Error('MIMO_API_KEY secret no configurado en Supabase Vault')
-  const res = await fetch('https://token-plan-ams.xiaomimimo.com/anthropic/v1/messages', {
+  const apiKey = Deno.env.get('DEEPSEEK_API_KEY') ?? ''
+  if (!apiKey) throw new Error('DEEPSEEK_API_KEY secret no configurado en Supabase Vault')
+  const res = await fetch('https://api.deepseek.com/anthropic/v1/messages', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -107,17 +131,84 @@ async function callMiMo(
     body: JSON.stringify({
       model,
       max_tokens: maxTokens,
+      thinking: { type: 'disabled' },
       system: systemPrompt,
       messages,
     }),
   })
   if (!res.ok) {
     const err = await res.text()
-    throw new Error(`MiMo API error ${res.status}: ${err}`)
+    throw new Error(`DeepSeek API error ${res.status}: ${err}`)
   }
   const data = await res.json()
   const textBlock = (data.content || []).find((b: {type:string}) => b.type === 'text')
   return textBlock?.text ?? data.content?.[0]?.text ?? ''
+}
+
+// ─── Llamada a Gemini (visión) ─────────────────────────────────────────
+// La API oficial de DeepSeek no acepta imágenes, así que la fase de visión
+// usa gemini-2.5-flash. responseMimeType fuerza JSON puro (sin fences
+// markdown) y thinkingConfig.thinkingBudget: 0 desactiva el razonamiento
+// interno de los modelos 2.5 (latencia y coste). Shape del request/response
+// verificado en vivo el 2026-08-11 contra v1beta/generateContent.
+interface GeminiPart { text?: string }
+interface GeminiResponse {
+  candidates?: Array<{
+    content?: { parts?: GeminiPart[] }
+    finishReason?: string
+  }>
+  promptFeedback?: { blockReason?: string }
+}
+
+async function callGeminiVision(
+  imageBase64: string,
+  mimeType: string,
+  systemPrompt: string,
+  userText: string,
+  maxTokens = 1024
+): Promise<string> {
+  const apiKey = Deno.env.get('GEMINI_API_KEY') ?? ''
+  if (!apiKey) throw new Error('GEMINI_API_KEY secret no configurado en Supabase Vault')
+  const res = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/${MODEL_VISION}:generateContent`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-goog-api-key': apiKey,
+      },
+      body: JSON.stringify({
+        system_instruction: { parts: [{ text: systemPrompt }] },
+        contents: [
+          {
+            role: 'user',
+            parts: [
+              { inline_data: { mime_type: mimeType, data: imageBase64 } },
+              { text: userText },
+            ],
+          },
+        ],
+        generationConfig: {
+          temperature: 0,
+          maxOutputTokens: maxTokens,
+          responseMimeType: 'application/json',
+          thinkingConfig: { thinkingBudget: 0 },
+        },
+      }),
+    }
+  )
+  if (!res.ok) {
+    const err = await res.text()
+    throw new Error(`Gemini API error ${res.status}: ${err}`)
+  }
+  const data = (await res.json()) as GeminiResponse
+  const candidate = data.candidates?.[0]
+  if (!candidate?.content?.parts?.length) {
+    throw new Error(
+      `Gemini sin contenido: finishReason=${candidate?.finishReason ?? 'n/a'} block=${data.promptFeedback?.blockReason ?? 'n/a'}`
+    )
+  }
+  return candidate.content.parts.map((p) => p.text ?? '').join('')
 }
 
 // ─── Parseo seguro de JSON desde respuesta de modelo ──────────────────
@@ -135,11 +226,11 @@ async function phaseVision(
   imageBase64: string,
   mimeType: string
 ): Promise<VisionResult> {
-  // ── Defensive sanitization (v2.5 fix) ────────────────────────────────
+  // ── Defensive sanitization (v2.5 fix, sigue aplicando con Gemini) ────
   // Frontend may send base64 with data URI prefix ("data:image/jpeg;base64,XXX")
-  // or with non-canonical mime ("image/jpg" instead of "image/jpeg"). MiMo
-  // rejects both with HTTP 400, which surfaced as "Error interno del servidor"
-  // for users. Strip prefix and normalize mime here for compatibility.
+  // or with non-canonical mime ("image/jpg" instead of "image/jpeg"). Gemini
+  // inline_data también exige base64 crudo y un mime canónico, así que la
+  // sanitización se conserva tal cual tras la migración desde MiMo.
   const cleanBase64 = imageBase64.startsWith('data:')
     ? imageBase64.replace(/^data:[^;,]+;base64,/, '')
     : imageBase64
@@ -177,22 +268,7 @@ CAMPOS A EXTRAER:
 Responde SOLO con este JSON sin ningún texto adicional:
 {"product_category": "...", "sugar_g_per_100": número_o_null, "confidence": "high|medium|low", "raw_text_found": "..."}`
 
-  const raw = await callMiMo(
-    [
-      {
-        role: 'user',
-        content: [
-          {
-            type: 'image',
-            source: { type: 'base64', media_type: cleanMime, data: cleanBase64 },
-          },
-          { type: 'text', text: userText },
-        ],
-      },
-    ],
-    system,
-    2048
-  )
+  const raw = await callGeminiVision(cleanBase64, cleanMime, system, userText, 1024)
 
   const parsed = safeParseJSON<VisionResult>(raw)
   if (!parsed) {
@@ -203,7 +279,15 @@ Responde SOLO con este JSON sin ningún texto adicional:
       raw_text_found: '',
     }
   }
-  return parsed
+  // Normalización defensiva: en modo JSON estricto Gemini puede emitir null
+  // en campos que no encuentra (verificado con imagen ilegible). Se fuerzan
+  // los tipos del contrato VisionResult para las fases posteriores.
+  return {
+    product_category: parsed.product_category ?? 'producto desconocido',
+    sugar_g_per_100: typeof parsed.sugar_g_per_100 === 'number' ? parsed.sugar_g_per_100 : null,
+    confidence: parsed.confidence ?? 'low',
+    raw_text_found: parsed.raw_text_found ?? '',
+  }
 }
 
 // ─── FASE 2 — Cargar alimentos permitidos en la dieta semanal ─────────
@@ -293,7 +377,7 @@ Si el producto escaneado encaja en cualquiera de estas categorías neutras, in_d
 Responde SOLO con este JSON:
 {"in_diet": true_o_false, "matched_food": "nombre_del_alimento_coincidente_o_null"}`
 
-  const raw = await callMiMo(
+  const raw = await callDeepSeek(
     [{ role: 'user', content: userText }],
     system,
     1024,
@@ -452,7 +536,7 @@ Deno.serve(async (req: Request) => {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     })
   } catch (err) {
-    console.error('[nm-scanner v2.5] unexpected error:', err)
+    console.error('[nm-scanner v3.0] unexpected error:', err)
     return new Response(
       JSON.stringify({ error: 'Error interno del servidor' }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }

@@ -3,6 +3,18 @@ import { createClient } from 'npm:@supabase/supabase-js@2'
 import { DIET_CODE_MAP } from '../_shared/dietCodes.ts'
 
 // ═══════════════════════════════════════════════════════════════════════
+// nm-chat v17 — Migración MiMo → DeepSeek (2026-08-11)
+//   Xiaomi revocó la MIMO_API_KEY por TERCERA vez (401 Invalid API Key).
+//   Historial de incidencias MiMo: key revocada (mayo), modelos retirados
+//   mimo-v2-pro/omni (julio), key revocada de nuevo (agosto).
+//   Migrado a DeepSeek vía su endpoint compatible con formato Anthropic:
+//   https://api.deepseek.com/anthropic/v1/messages — mismo wire format que
+//   usaba MiMo, por lo que el cambio es solo URL + secret + nombres de modelo.
+//   Secret nuevo: DEEPSEEK_API_KEY (Vault). MIMO_API_KEY queda obsoleto.
+//   Modelos: deepseek-v4-flash (classify + format). Si la calidad del
+//   formatter se queda corta, subir MODEL_FORMATTER a 'deepseek-v4-pro'
+//   (cambio de una constante).
+//
 // nm-chat v16.2 — Rotate revoked MiMo API key fallback (2026-05-14)
 //   Old key tp-ec3qwry... was revoked, causing HTTP 401 from MiMo and
 //   HTTP 500 in this EF. RESUELTO 2026-07-07: fallback eliminado — MIMO_API_KEY
@@ -19,8 +31,8 @@ import { DIET_CODE_MAP } from '../_shared/dietCodes.ts'
 //      datos del paciente + del profesional → sin alucinaciones.
 // ═══════════════════════════════════════════════════════════════════════
 
-const MODEL_CLASSIFIER = 'mimo-v2.5'
-const MODEL_FORMATTER  = 'mimo-v2.5'
+const MODEL_CLASSIFIER = 'deepseek-v4-flash'
+const MODEL_FORMATTER  = 'deepseek-v4-flash'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -143,30 +155,40 @@ REGLAS ABSOLUTAS:
 9. SOLO di "no encuentro tu dieta" si NO hay ni menú guardado NI plantilla base en los datos RAG.
 10. Si el paciente pregunta por su profesional, usa el nombre y especialidad que aparece en DATOS DEL PROFESIONAL.`
 
-// ─── MiMo API CALL ──────────────────────────────────────────────
-async function callMiMo(
+// ─── DeepSeek API CALL (endpoint compatible con formato Anthropic) ──────
+// thinking:{type:'disabled'} es OBLIGATORIO: deepseek-v4 razona por defecto
+// y los bloques thinking consumen max_tokens antes de emitir texto
+// (verificado en vivo 2026-08-11: con thinking activo y max_tokens bajos,
+// content llega SIN bloque 'text' y stop_reason='max_tokens').
+async function callDeepSeek(
   model: string,
   systemPrompt: string,
   messages: Array<{role: string, content: string}>,
   maxTokens = 500
 ): Promise<{text: string, usage: {input_tokens: number, output_tokens: number}}> {
-  const apiKey = Deno.env.get('MIMO_API_KEY') ?? ''
-  if (!apiKey) throw new Error('MIMO_API_KEY secret no configurado en Supabase Vault')
+  const apiKey = Deno.env.get('DEEPSEEK_API_KEY') ?? ''
+  if (!apiKey) throw new Error('DEEPSEEK_API_KEY secret no configurado en Supabase Vault')
 
-  const response = await fetch('https://token-plan-ams.xiaomimimo.com/anthropic/v1/messages', {
+  const response = await fetch('https://api.deepseek.com/anthropic/v1/messages', {
     method: 'POST',
     headers: {
       'x-api-key': apiKey,
       'anthropic-version': '2023-06-01',
       'content-type': 'application/json',
     },
-    body: JSON.stringify({ model, max_tokens: maxTokens, system: systemPrompt, messages }),
+    body: JSON.stringify({
+      model,
+      max_tokens: maxTokens,
+      thinking: { type: 'disabled' },
+      system: systemPrompt,
+      messages,
+    }),
   })
 
   if (!response.ok) {
     const errBody = await response.text()
-    console.error(`[MiMo ${model}] HTTP ${response.status}: ${errBody}`)
-    throw new Error(`MiMo API error (${model}): ${response.status}`)
+    console.error(`[DeepSeek ${model}] HTTP ${response.status}: ${errBody}`)
+    throw new Error(`DeepSeek API error (${model}): ${response.status}`)
   }
 
   const data = await response.json()
@@ -183,7 +205,7 @@ async function classifyIntent(
   patientContext: string
 ): Promise<{intent: string, entities: Record<string, string>, confidence: string}> {
   const prompt = buildClassifierPrompt(message, patientContext)
-  const result = await callMiMo(
+  const result = await callDeepSeek(
     MODEL_CLASSIFIER,
     'Eres un clasificador JSON. Responde SOLO JSON válido.',
     [{role: 'user', content: prompt}],
@@ -692,7 +714,7 @@ Deno.serve(async (req: Request) => {
       }
     ]
 
-    const formatResult      = await callMiMo(MODEL_FORMATTER, FORMATTER_SYSTEM, formatterMessages, 1200)
+    const formatResult      = await callDeepSeek(MODEL_FORMATTER, FORMATTER_SYSTEM, formatterMessages, 1200)
     const formattedResponse = formatResult.text || 'Lo siento, no he podido procesar tu consulta.'
     const formatTime        = Date.now() - formatStart
     const totalTime         = Date.now() - startTime

@@ -3,7 +3,8 @@
 ## Stack
 - **Frontend**: Vite + React 18 + Tailwind CSS + Lucide React
 - **Backend**: Supabase (PostgreSQL, Auth, Edge Functions, RLS)
-- **AI Chatbot**: Claude Haiku 3 (classify) + Claude Sonnet 4.5 (format)
+- **AI Chatbot**: DeepSeek v4-flash (classify + format, endpoint Anthropic-compat)
+- **AI Scanner**: Gemini 2.5 Flash (visión de etiquetas) + DeepSeek v4-flash (razonamiento dietético)
 - **Deployment**: Docker + nginx → Dokploy/VPS
 
 ## Database: 15 tables (nm_ prefix)
@@ -28,14 +29,19 @@
 ## Edge Functions
 | Function | Version | Architecture |
 |----------|---------|-------------|
-| nm-chat | v11 | Haiku classify → RAG → Sonnet format |
+| nm-chat | v17 | DeepSeek classify → RAG → DeepSeek format |
+| nm-scanner | v3.0 | Gemini visión → RAG dieta → DeepSeek diet-check → veredicto TS |
+| nm-shopping | v1 | Sin IA (solo Supabase) |
 
 ### nm-chat Architecture (3-phase hybrid)
-1. **Phase 1 — CLASSIFY** (Haiku 3, ~400ms, $0.0003/msg): Intent classification into 11 categories
+1. **Phase 1 — CLASSIFY** (deepseek-v4-flash, thinking disabled, ~1.4s): Intent classification into 11 categories
 2. **Phase 2 — RAG** (Supabase queries, ~300-600ms, $0): Fetch relevant data based on intent
-3. **Phase 3 — FORMAT** (Sonnet 4.5, ~2-3s, $0.0035/msg): Generate natural response
+3. **Phase 3 — FORMAT** (deepseek-v4-flash, thinking disabled): Generate natural response
 
-**Cost per message**: ~$0.004 | **200 msgs/day**: ~$24/month
+### Historial de proveedores IA (contexto para futuras migraciones)
+Claude (mar) → MiMo por coste (abr) → 3 incidencias MiMo: key revocada (may),
+modelos retirados (jul), key revocada otra vez (ago) → DeepSeek + Gemini (2026-08-11).
+La API oficial de DeepSeek NO acepta imágenes — por eso la visión del escáner va por Gemini.
 
 ### Supported intents
 alimento_permitido, alimento_alternativa, dieta_info, comida_sugerencia,
@@ -44,6 +50,6 @@ horario_comidas, receta_consulta, medicacion, peso_progreso, saludo, despedida, 
 ## Deployment
 - **Supabase**: bpazmmbjjducdmxgfoum.supabase.co
 - **VPS**: 31.97.69.100 (Hostinger)
-- **Secrets required**: ANTHROPIC_API_KEY (in Supabase Edge Function secrets)
+- **Secrets required**: DEEPSEEK_API_KEY + GEMINI_API_KEY (in Supabase Edge Function secrets). MIMO_API_KEY y ANTHROPIC_API_KEY obsoletos.
 
-## Last updated: 2026-03-03
+## Last updated: 2026-08-11

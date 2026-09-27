@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useEffect, useCallback } from 'react'
 import { supabase } from './supabase'
+import { authenticatePatient, restorePatientSession } from './patientAccess'
 
 const AuthContext = createContext(null)
 
@@ -19,30 +20,34 @@ export function AuthProvider({ children }) {
   const [role, setRole] = useState(null) // 'professional' | 'patient' | null
   const [profile, setProfile] = useState(null)
   const [loading, setLoading] = useState(true)
+  const [patientCode, setPatientCode] = useState(null)
 
   // Resolve role + profile from session
   const resolveUser = useCallback(async (sess) => {
     try {
-      // Check patient session in localStorage FIRST (patients don't use Supabase Auth)
-      const patientSession = safeGetItem('nm_patient_session')
-      if (patientSession) {
+      const saved = safeGetItem('nm_patient_session')
+      if (saved) {
         try {
-          const ps = JSON.parse(patientSession)
-          if (ps.patient_id && new Date(ps.expires_at) > new Date()) {
-            const { data: patient } = await supabase
-              .from('nm_patients')
-              .select('*')
-              .eq('id', ps.patient_id)
-              .maybeSingle()
-            if (patient && !patient.is_blocked) {
-              setRole('patient')
-              setProfile(patient)
-              return
-            }
+          if (sess?.user) {
+            const { error } = await supabase.auth.signOut({ scope: 'local' })
+            if (error) throw error
+            setSession(null)
           }
-          safeRemoveItem('nm_patient_session')
-        } catch { /* ignore parse error */ }
+          const restored = await restorePatientSession(supabase, saved)
+          if (restored) {
+            setRole('patient')
+            setProfile(restored.patient)
+            setPatientCode(restored.code)
+            return
+          }
+        } catch { /* Fail closed; a failed patient session must not reveal a professional session. */ }
+        safeRemoveItem('nm_patient_session')
+        setPatientCode(null)
+        setRole(null)
+        setProfile(null)
+        return
       }
+      setPatientCode(null)
 
       // No patient session — check Supabase Auth for professionals
       if (!sess?.user) {
@@ -67,8 +72,8 @@ export function AuthProvider({ children }) {
 
       setRole(null)
       setProfile(null)
-    } catch (err) {
-      console.error('[AuthContext] resolveUser error:', err)
+    } catch {
+      console.error('[AuthContext] No se pudo comprobar la sesión')
       setRole(null)
       setProfile(null)
     } finally {
@@ -83,7 +88,9 @@ export function AuthProvider({ children }) {
     })
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, s) => {
       setSession(s)
-      if (!s) { setRole(null); setProfile(null); setLoading(false) }
+      if (_event === 'SIGNED_OUT' && !safeGetItem('nm_patient_session')) {
+        setRole(null); setProfile(null); setPatientCode(null); setLoading(false)
+      }
     })
     return () => subscription.unsubscribe()
   }, [resolveUser])
@@ -92,39 +99,35 @@ export function AuthProvider({ children }) {
   const loginPro = async (email, password) => {
     const { data, error } = await supabase.auth.signInWithPassword({ email, password })
     if (error) throw error
+    safeRemoveItem('nm_patient_session')
+    setPatientCode(null)
     await resolveUser(data.session)
     return data
   }
 
   // Patient login with access code
   const loginPatient = async (code) => {
-    const trimmed = code.trim().toUpperCase()
-    const { data: ac, error } = await supabase
-      .from('nm_access_codes')
-      .select('*, patient:nm_patients(*)')
-      .eq('access_code', trimmed)
-      .eq('is_blocked', false)
-      .maybeSingle()
-
-    if (error || !ac) throw new Error('Código no válido')
-    if (new Date(ac.code_expiry) < new Date()) throw new Error('Código expirado. Contacte con su consulta.')
-    if (ac.patient?.is_blocked) throw new Error('Acceso bloqueado. Contacte con su consulta.')
-
-    // Store patient session
-    const patientSession = {
-      patient_id: ac.patient_id,
-      code: trimmed,
-      expires_at: ac.code_expiry,
-      logged_at: new Date().toISOString()
+    const { patient, code: normalized } = await authenticatePatient(supabase, code)
+    const { data: { session: professionalSession } } = await supabase.auth.getSession()
+    if (professionalSession) {
+      const { error } = await supabase.auth.signOut({ scope: 'local' })
+      if (error) throw new Error('No se pudo cambiar de sesión. Inténtalo de nuevo.')
+      setSession(null)
     }
-    safeSetItem('nm_patient_session', JSON.stringify(patientSession))
+    safeSetItem('nm_patient_session', JSON.stringify({
+      patient_id: patient.id,
+      code: normalized,
+      logged_at: new Date().toISOString(),
+    }))
+    setPatientCode(normalized)
     setRole('patient')
-    setProfile(ac.patient)
-    return ac.patient
+    setProfile(patient)
+    return patient
   }
 
   const logout = async () => {
     safeRemoveItem('nm_patient_session')
+    setPatientCode(null)
     await supabase.auth.signOut()
     setSession(null)
     setRole(null)
@@ -132,7 +135,7 @@ export function AuthProvider({ children }) {
   }
 
   return (
-    <AuthContext.Provider value={{ session, role, profile, loading, loginPro, loginPatient, logout, setProfile }}>
+    <AuthContext.Provider value={{ session, role, profile, patientCode, loading, loginPro, loginPatient, logout, setProfile }}>
       {children}
     </AuthContext.Provider>
   )

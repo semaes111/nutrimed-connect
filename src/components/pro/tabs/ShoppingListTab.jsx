@@ -65,9 +65,11 @@ export default function ShoppingListTab({ patient, professionalId }) {
     setRegenMsg(null)
     try {
       const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || 'https://bpazmmbjjducdmxgfoum.supabase.co'
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session?.access_token) throw new Error('Sesión requerida')
       const res = await fetch(`${SUPABASE_URL}/functions/v1/nm-shopping`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
         body: JSON.stringify({ patient_id: patient.id, professional_id: professionalId }),
       })
       if (!res.ok) throw new Error('Error en la generación')

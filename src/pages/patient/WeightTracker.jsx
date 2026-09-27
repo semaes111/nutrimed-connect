@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useAuth } from '../../lib/AuthContext'
 import { supabase } from '../../lib/supabase'
+import { patientRpc } from '../../lib/patientAccess'
 import { formatDateShort } from '../../lib/dietConfig'
 import PatientLayout from '../../components/layout/PatientLayout'
 import { usePageTheme } from '../../lib/usePageTheme'
@@ -8,7 +9,7 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 import { Plus, TrendingDown, Target, Scale } from 'lucide-react'
 
 export default function WeightTracker() {
-  const { profile } = useAuth()
+  const { profile, patientCode, setProfile } = useAuth()
   const tc = usePageTheme()
   const [records, setRecords] = useState([])
   const [loading, setLoading] = useState(true)
@@ -16,39 +17,49 @@ export default function WeightTracker() {
   const [newWeight, setNewWeight] = useState('')
   const [newNote, setNewNote] = useState('')
   const [saving, setSaving] = useState(false)
+  const [error, setError] = useState(null)
 
   const NEU_CARD  = { background: tc.cardBg, border: tc.cardBorder, boxShadow: tc.cardShadow, borderRadius: 20 }
   const NEU_STAT  = { ...NEU_CARD, padding: 14, borderRadius: 18 }
 
-  useEffect(() => { if (profile?.id) load() }, [profile?.id])
+  useEffect(() => { if (profile?.id) load() }, [profile?.id, patientCode])
 
   async function load() {
     setLoading(true)
-    const { data } = await supabase
-      .from('nm_weight_records').select('*')
-      .eq('patient_id', profile.id).order('date', { ascending: true })
-    setRecords(data || [])
-    setLoading(false)
+    setError(null)
+    try {
+      const { data, error: dbError } = await patientRpc(supabase, patientCode, 'nm_app_pesos')
+        .order('date', { ascending: true })
+      if (dbError) throw dbError
+      setRecords(data || [])
+    } catch {
+      setRecords([])
+      setError('No se pudo cargar el historial de peso.')
+    } finally {
+      setLoading(false)
+    }
   }
 
   async function handleSave(e) {
     e.preventDefault()
     if (!newWeight) return
     setSaving(true)
-    const today    = new Date().toISOString().split('T')[0]
-    const existing = records.find(r => r.date === today)
-    if (existing) {
-      await supabase.from('nm_weight_records').update({ weight: parseFloat(newWeight), notes: newNote || null }).eq('id', existing.id)
-    } else {
-      await supabase.from('nm_weight_records').insert({
-        patient_id: profile.id, weight: parseFloat(newWeight),
-        date: today, notes: newNote || null, recorded_by: 'patient',
-      })
+    setError(null)
+    try {
+      const { data, error: saveError } = await patientRpc(supabase, patientCode, 'nm_app_guardar_peso', {
+        p_peso: Number(newWeight),
+        p_fecha: new Date().toISOString().split('T')[0],
+        p_notas: newNote || null,
+      }).single()
+      if (saveError || !data) throw new Error('save failed')
+      setProfile(current => ({ ...current, current_weight: data.weight }))
+      setNewWeight(''); setNewNote(''); setShowForm(false)
+      await load()
+    } catch {
+      setError('No se ha guardado el peso. Comprueba tu acceso e inténtalo de nuevo.')
+    } finally {
+      setSaving(false)
     }
-    await supabase.from('nm_patients')
-      .update({ current_weight: parseFloat(newWeight), updated_at: new Date().toISOString() })
-      .eq('id', profile.id)
-    setNewWeight(''); setNewNote(''); setShowForm(false); setSaving(false); load()
   }
 
   const chartData = records.map(r => ({ date: formatDateShort(r.date), peso: Number(r.weight) }))
@@ -75,6 +86,7 @@ export default function WeightTracker() {
         </button>
       }
     >
+      {error && <p role="alert" className="mb-4 text-sm" style={{ color: tc.textDanger }}>{error}</p>}
       {/* Stats */}
       <div className="grid grid-cols-3 gap-2.5 mb-4">
         <div className="text-center" style={NEU_STAT}>

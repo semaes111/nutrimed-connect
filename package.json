@@ -10,7 +10,8 @@
     "preview": "vite preview",
     "test": "vitest run",
     "lint": "eslint .",
-    "check:dietmap": "node scripts/check-dietmap.mjs"
+    "check:dietmap": "node scripts/check-dietmap.mjs",
+    "check:edge-types": "node scripts/check-edge-types.mjs"
   },
   "keywords": [],
   "author": "",
@@ -31,6 +32,7 @@
   "devDependencies": {
     "@capacitor/assets": "^3.0.5",
     "@capacitor/cli": "^7.6.2",
+    "@electric-sql/pglite": "0.5.8",
     "@eslint/js": "^10.0.1",
     "@tailwindcss/vite": "^4.2.1",
     "@vitejs/plugin-react": "^5.1.4",

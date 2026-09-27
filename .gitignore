@@ -26,3 +26,6 @@ android/local.properties
 
 # Capacitor temp
 .capgo/
+
+# Supabase CLI local metadata
+supabase/.temp/

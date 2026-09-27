@@ -1,30 +1,39 @@
 import { useState, useEffect } from 'react'
 import { useAuth } from '../../lib/AuthContext'
 import { supabase } from '../../lib/supabase'
+import { patientRpc } from '../../lib/patientAccess'
 import { formatDate } from '../../lib/dietConfig'
 import PatientLayout from '../../components/layout/PatientLayout'
 import { usePageTheme } from '../../lib/usePageTheme'
 import { Pill, Clock, AlertTriangle, ChevronDown, ChevronUp, Info } from 'lucide-react'
 
 export default function MedsView() {
-  const { profile } = useAuth()
+  const { profile, patientCode } = useAuth()
   const tc = usePageTheme()
   const [meds, setMeds]       = useState([])
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(null)
   const [expanded, setExpanded] = useState(null)
 
   const NEU_CARD = { background: tc.cardBg, border: tc.cardBorder, boxShadow: tc.cardShadow, borderRadius: 20 }
 
-  useEffect(() => { if (profile?.id) load() }, [profile?.id])
+  useEffect(() => { if (profile?.id) load() }, [profile?.id, patientCode])
 
   async function load() {
     setLoading(true)
-    const { data } = await supabase.from('nm_medications').select('*')
-      .eq('patient_id', profile.id)
-      .order('is_active', { ascending: false })
-      .order('created_at', { ascending: false })
-    setMeds(data || [])
-    setLoading(false)
+    setError(null)
+    try {
+      const { data, error: dbError } = await patientRpc(supabase, patientCode, 'nm_app_medicaciones')
+        .order('is_active', { ascending: false })
+        .order('created_at', { ascending: false })
+      if (dbError) throw dbError
+      setMeds(data || [])
+    } catch {
+      setMeds([])
+      setError('No se pudo cargar la medicación. Inténtalo de nuevo.')
+    } finally {
+      setLoading(false)
+    }
   }
 
   const activeMeds   = meds.filter(m => m.is_active)
@@ -37,7 +46,9 @@ export default function MedsView() {
 
   return (
     <PatientLayout title="Medicación">
-      {loading ? (
+      {error ? (
+        <div role="alert" className="p-4"><p>{error}</p><button onClick={load} className="btn btn-secondary">Reintentar</button></div>
+      ) : loading ? (
         <div className="flex justify-center py-20"><div className="loader" /></div>
       ) : meds.length === 0 ? (
         <div className="text-center py-16 rounded-[20px]" style={NEU_CARD}>

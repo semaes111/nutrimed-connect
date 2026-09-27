@@ -1,5 +1,6 @@
+import { authorizePatient, unauthorized } from '../_shared/patientAuth.ts'
 import 'jsr:@supabase/functions-js/edge-runtime.d.ts'
-import { createClient } from 'npm:@supabase/supabase-js@2'
+import { createClient, type SupabaseClient } from 'npm:@supabase/supabase-js@2.98.0'
 import { DIET_CODE_MAP } from '../_shared/dietCodes.ts'
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -293,7 +294,7 @@ Responde SOLO con este JSON sin ningún texto adicional:
 // ─── FASE 2 — Cargar alimentos permitidos en la dieta semanal ─────────
 async function phaseLoadDiet(
   patientId: string,
-  db: ReturnType<typeof createClient>
+  db: SupabaseClient
 ): Promise<{ allowedFoods: string[]; hasDiet: boolean }> {
   // Cargar planes activos del paciente (igual que nm-chat v16)
   const { data: plans, error } = await db
@@ -493,7 +494,7 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
-    const { image_base64, mime_type, patient_id } = await req.json()
+    const { image_base64, mime_type, patient_id, access_code } = await req.json()
 
     if (!image_base64 || !mime_type || !patient_id) {
       return new Response(
@@ -506,6 +507,9 @@ Deno.serve(async (req: Request) => {
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     )
+
+    const authorized = await authorizePatient(db, req, { patient_id, access_code })
+    if (!authorized) return unauthorized(corsHeaders)
 
     // ── Fases en paralelo donde sea posible ───────────────────────────
     // Fase 1 (visión) y Fase 2 (dieta) se pueden lanzar en paralelo

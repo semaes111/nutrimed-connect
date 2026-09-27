@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { useAuth } from '../../lib/AuthContext'
 import { supabase } from '../../lib/supabase'
+import { patientRpc } from '../../lib/patientAccess'
 import PatientLayout from '../../components/layout/PatientLayout'
 import { usePageTheme } from '../../lib/usePageTheme'
 import { Send, Bot, User } from 'lucide-react'
@@ -13,7 +14,7 @@ const EDGE_URL  = 'https://bpazmmbjjducdmxgfoum.supabase.co/functions/v1/nm-chat
 const ANON_KEY  = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJwYXptbWJqamR1Y2RteGdmb3VtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njc4MjY1MTksImV4cCI6MjA4MzQwMjUxOX0.uZd2m7JMXd_i-bZVsTQTcqTEhJMxLXwvdPLK74h07Kw'
 
 export default function PatientChat() {
-  const { profile } = useAuth()
+  const { profile, patientCode } = useAuth()
   const tc = usePageTheme()
   const [messages, setMessages] = useState([])
   const [input, setInput]       = useState('')
@@ -62,26 +63,26 @@ export default function PatientChat() {
   }
 
   useEffect(() => { scrollRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages, loading])
-  useEffect(() => { if (profile?.id) loadOrCreateConversation() }, [profile?.id])
+  useEffect(() => { if (profile?.id) loadOrCreateConversation() }, [profile?.id, patientCode])
 
   async function loadOrCreateConversation() {
+    setMessages([])
+    setConvId(null)
     try {
-      const { data: existing, error: err1 } = await supabase
-        .from('nm_chat_conversations').select('id')
-        .eq('patient_id', profile.id).order('created_at', { ascending: false }).limit(1)
+      const { data: existing, error: err1 } = await patientRpc(supabase, patientCode, 'nm_app_conversaciones').select('id')
+        .eq('is_active', true).order('created_at', { ascending: false }).limit(1)
       if (err1) throw err1
 
       if (existing?.length) {
         setConvId(existing[0].id)
-        const { data: msgs, error: err2 } = await supabase.from('nm_chat_messages').select('*')
-          .eq('conversation_id', existing[0].id).order('created_at', { ascending: true })
+        const { data: msgs, error: err2 } = await patientRpc(supabase, patientCode, 'nm_app_mensajes', { p_conversation_id: existing[0].id })
+          .order('created_at', { ascending: true })
         if (err2) throw err2
         if (msgs?.length) setMessages(msgs.map(m => ({ id: m.id, role: m.role, content: m.content })))
       } else {
-        const { data: newConv, error: err3 } = await supabase.from('nm_chat_conversations')
-          .insert({ patient_id: profile.id, title: 'Chat nutricional' }).select().single()
-        if (err3) throw err3
-        if (newConv) setConvId(newConv.id)
+        // The authorized Edge Function creates the conversation on the first message.
+        setConvId(null)
+        setMessages([])
       }
     } catch (err) {
       console.error('[PatientChat] loadOrCreateConversation error:', err)
@@ -110,6 +111,8 @@ export default function PatientChat() {
         body: JSON.stringify({
           message: text,
           patient_id: profile.id,
+          access_code: patientCode,
+          conversation_id: convId,
           conversation_history: messages.map(m => ({ role: m.role, content: m.content })),
         }),
       })
@@ -120,6 +123,7 @@ export default function PatientChat() {
       }
 
       const data  = await res.json()
+      if (data.conversation_id) setConvId(data.conversation_id)
       const reply = data?.content || data?.message || data?.response || 'Sin respuesta del asistente.'
       const assistantMsg = { id: Date.now() + 1, role: 'assistant', content: reply }
       setMessages(prev => [...prev, assistantMsg])

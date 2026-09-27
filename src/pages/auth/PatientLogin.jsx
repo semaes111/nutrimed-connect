@@ -70,10 +70,10 @@ export default function PatientLogin() {
               <input
                 type="text"
                 className="input text-center text-lg tracking-[0.3em] uppercase font-mono"
-                placeholder="XXXXXX"
+                placeholder="Código de acceso"
                 value={code}
                 onChange={e => setCode(e.target.value.toUpperCase())}
-                maxLength={8}
+                maxLength={64}
                 autoComplete="off"
                 autoFocus
               />

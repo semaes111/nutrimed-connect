@@ -11,6 +11,7 @@
 import { useState, useEffect } from 'react'
 import { useAuth } from '../../lib/AuthContext'
 import { supabase } from '../../lib/supabase'
+import { patientRpc } from '../../lib/patientAccess'
 import PatientLayout from '../../components/layout/PatientLayout'
 import { usePageTheme } from '../../lib/usePageTheme'
 import { SHOPPING_CATEGORIES as CATEGORIES } from '../../lib/dietConfig'
@@ -127,7 +128,7 @@ function CategoryCard({ category, items, checked, onToggle, tc }) {
    COMPONENTE PRINCIPAL
    ═══════════════════════════════════════════════════════════════════ */
 export default function ShoppingList() {
-  const { profile } = useAuth()
+  const { profile, patientCode } = useAuth()
   const tc = usePageTheme()
 
   const [list,      setList]      = useState(null)
@@ -139,16 +140,13 @@ export default function ShoppingList() {
   const [updateMsg, setUpdateMsg] = useState(null)        // feedback éxito/error/sin dieta
   const [hasDiet,   setHasDiet]   = useState(null)        // null=sin comprobar, true/false
 
-  useEffect(() => { if (profile?.id) loadList() }, [profile?.id])
+  useEffect(() => { if (profile?.id) loadList() }, [profile?.id, patientCode])
 
   async function loadList() {
     try {
       setLoading(true)
       setError(null)
-      const { data, error: dbErr } = await supabase
-        .from('nm_shopping_lists')
-        .select('*')
-        .eq('patient_id', profile.id)
+      const { data, error: dbErr } = await patientRpc(supabase, patientCode, 'nm_app_lista_compra')
         .eq('is_current', true)
         .order('generated_at', { ascending: false })
         .limit(1)
@@ -175,15 +173,11 @@ export default function ShoppingList() {
     setUpdateMsg(null)
     try {
       // 1 — Verificar si hay planes de dieta activos para este paciente
-      const { count, error: countErr } = await supabase
-        .from('nm_diet_plans')
-        .select('id', { count: 'exact', head: true })
-        .eq('patient_id', profile.id)
-        .eq('is_active', true)
+      const { data: plans, error: countErr } = await patientRpc(supabase, patientCode, 'nm_app_dietas').select('id')
 
       if (countErr) throw countErr
 
-      if (!count || count === 0) {
+      if (!plans?.length) {
         // Sin dieta asignada — feedback amarillo, no llamar a la Edge Function
         setHasDiet(false)
         setUpdateMsg('Tu dietista aún no ha configurado tu plan de alimentación.')
@@ -198,7 +192,7 @@ export default function ShoppingList() {
       const res = await fetch(`${SUPABASE_URL}/functions/v1/nm-shopping`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ patient_id: profile.id }),
+        body: JSON.stringify({ patient_id: profile.id, access_code: patientCode }),
       })
 
       if (!res.ok) throw new Error(`nm-shopping status ${res.status}`)

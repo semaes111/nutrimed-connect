@@ -13,4 +13,5 @@ jobs:
       - run: npm run lint
       - run: npm test
       - run: npm run check:dietmap
+      - run: npm run check:edge-types
       - run: npm run build

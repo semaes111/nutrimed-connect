@@ -10,14 +10,6 @@ import { supabase } from '../../../lib/supabase.js'
 import { formatDate, getDaysRemaining } from '../../../lib/dietConfig'
 import { Key, Copy, Check, Lock, Unlock } from 'lucide-react'
 
-/** Genera un código de acceso aleatorio de 8 caracteres (sin caracteres ambiguos). */
-function generateCode() {
-  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
-  let code = ''
-  for (let i = 0; i < 8; i++) code += chars[Math.floor(Math.random() * chars.length)]
-  return code
-}
-
 /**
  * @param {{ patient: object, onUpdate: Function }} props
  */
@@ -30,23 +22,7 @@ export default function AccessTab({ patient, onUpdate }) {
     setSaving(true)
     setError(null)
     try {
-      const code   = generateCode()
-      const expiry = new Date()
-      expiry.setDate(expiry.getDate() + 28)
-
-      const { error: patErr } = await supabase.from('nm_patients').update({
-        access_code: code,
-        code_expiry: expiry.toISOString(),
-        is_blocked:  false,
-      }).eq('id', patient.id)
-      if (patErr) throw patErr
-
-      const { error: codeErr } = await supabase.from('nm_access_codes').upsert({
-        patient_id:  patient.id,
-        access_code: code,
-        code_expiry: expiry.toISOString(),
-        is_blocked:  false,
-      }, { onConflict: 'patient_id' })
+      const { error: codeErr } = await supabase.rpc('nm_pro_regenerar_codigo', { p_patient_id: patient.id })
       if (codeErr) throw codeErr
 
       onUpdate()
@@ -64,13 +40,10 @@ export default function AccessTab({ patient, onUpdate }) {
     try {
       const newBlocked = !patient.is_blocked
 
-      const { error: patErr } = await supabase
-        .from('nm_patients').update({ is_blocked: newBlocked }).eq('id', patient.id)
-      if (patErr) throw patErr
-
-      const { error: codeErr } = await supabase
-        .from('nm_access_codes').update({ is_blocked: newBlocked }).eq('patient_id', patient.id)
-      if (codeErr) throw codeErr
+      const { error: blockErr } = await supabase.rpc('nm_pro_bloquear_acceso', {
+        p_patient_id: patient.id, p_bloqueado: newBlocked,
+      })
+      if (blockErr) throw blockErr
 
       onUpdate()
     } catch (err) {
@@ -130,7 +103,7 @@ export default function AccessTab({ patient, onUpdate }) {
           <div className="space-y-4">
             <div className="flex items-center gap-3">
               <div data-code
-                className="flex-1 bg-[#1F232B] rounded-xl px-4 py-3 font-mono text-2xl tracking-[0.3em] text-center font-bold text-[#E2E8F0] select-all">
+                className="flex-1 bg-[#1F232B] rounded-xl px-4 py-3 font-mono text-sm break-all tracking-[0.1em] text-center font-bold text-[#E2E8F0] select-all">
                 {patient.access_code}
               </div>
               <button onClick={handleCopy} className="btn btn-secondary !p-3 !rounded-xl" title="Copiar">

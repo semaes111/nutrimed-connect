@@ -1,5 +1,6 @@
+import { authorizePatient, unauthorized, ownsConversation } from '../_shared/patientAuth.ts'
 import 'jsr:@supabase/functions-js/edge-runtime.d.ts'
-import { createClient } from 'npm:@supabase/supabase-js@2'
+import { createClient, type SupabaseClient } from 'npm:@supabase/supabase-js@2.98.0'
 import { DIET_CODE_MAP } from '../_shared/dietCodes.ts'
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -235,7 +236,7 @@ async function classifyIntent(
 
 // ─── RAG: FETCH RELEVANT DATA ─────────────────────────────────────────
 async function fetchRAGContext(
-  supabase: ReturnType<typeof createClient>,
+  supabase: SupabaseClient,
   intent: string,
   entities: Record<string, string>,
   patientId: string
@@ -633,6 +634,17 @@ Deno.serve(async (req: Request) => {
         JSON.stringify({ error: 'message y patient_id obligatorios' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
+    }
+
+    const authorized = await authorizePatient(supabase, req, {
+      patient_id: patientId,
+      access_code: body.access_code,
+    })
+    if (!authorized) return unauthorized(corsHeaders)
+    patientId = authorized.patientId
+    if (conversationId && (typeof conversationId !== 'string' ||
+        !await ownsConversation(supabase, patientId, conversationId))) {
+      return unauthorized(corsHeaders)
     }
 
     if (!conversationId) {

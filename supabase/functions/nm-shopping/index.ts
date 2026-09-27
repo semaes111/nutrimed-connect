@@ -1,8 +1,9 @@
+import { authorizePatient, unauthorized } from '../_shared/patientAuth.ts'
 // nm-shopping v8.0 — Generador DETERMINISTA (sin LLM)
 // Fuente: nm_food_knowledge + nm_breakfast_catalog + nm_snack_catalog
 // Zero API calls, instant, 100% reliable
 import 'jsr:@supabase/functions-js/edge-runtime.d.ts'
-import { createClient } from 'jsr:@supabase/supabase-js@2'
+import { createClient } from 'npm:@supabase/supabase-js@2.98.0'
 import { DIET_CODE_MAP } from '../_shared/dietCodes.ts'
 const SB_URL = Deno.env.get('SUPABASE_URL') ?? ''
 const SB_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
@@ -84,7 +85,7 @@ function dedup(arr: string[]): string[] {
 Deno.serve(async (req: Request): Promise<Response> => {
   const cors = {
     'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization, apikey, x-client-info',
     'Access-Control-Allow-Methods': 'POST, OPTIONS',
   }
   if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors })
@@ -93,12 +94,15 @@ Deno.serve(async (req: Request): Promise<Response> => {
     { status: 405, headers: { ...cors, 'Content-Type': 'application/json' } })
 
   try {
-    const { patient_id, professional_id } = await req.json()
+    const { patient_id, access_code } = await req.json()
     if (!patient_id) return new Response(
       JSON.stringify({ error: 'patient_id requerido' }),
       { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } })
 
     const db = createClient(SB_URL, SB_KEY)
+    const authorized = await authorizePatient(db, req, { patient_id, access_code })
+    if (!authorized) return unauthorized(cors)
+    const professional_id = authorized.professionalId
 
     // 1. Datos del paciente + dietas
     const [{ data: patient }, { data: dietPlans }] = await Promise.all([
@@ -107,7 +111,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
     ])
     const dietTypes = [...new Set((dietPlans ?? []).map((p: Record<string, string>) => p.diet_type))]
     const dietCodes = [...new Set(dietTypes.map((s: string) => DIET_CODE_MAP[s]).filter(Boolean))]
-    console.log(`[v8.0] patient=${patient?.full_name} codes=${dietCodes.join(',')}`)
+    console.log('[nm-shopping] Dieta validada')
 
     if (dietCodes.length === 0) {
       const emptyItems: Items = { proteinas: [], hidratos: [], verduras: [], frutas: [], grasas: [], lacteos: [], legumbres: [], especias: [], bebidas: [], snacks: [], congelados: [], conservas: [] }
@@ -167,7 +171,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
 
     // 6. Intolerancias: filtrar si aplica
     const intol = patient?.food_intolerances?.toLowerCase() ?? ''
-    const intolWords = intol ? intol.split(/[,;]+/).map((w: string) => w.trim().toLowerCase()).filter((w: string) => w.length >= 3) : []
+    const intolWords: string[] = intol ? intol.split(/[,;]+/).map((w: string) => w.trim().toLowerCase()).filter((w: string) => w.length >= 3) : []
 
     // 7. Deduplicar, filtrar y ordenar
     let totalRemoved = 0

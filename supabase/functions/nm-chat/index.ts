@@ -1,8 +1,20 @@
 import 'jsr:@supabase/functions-js/edge-runtime.d.ts'
 import { createClient } from 'npm:@supabase/supabase-js@2'
 import { DIET_CODE_MAP } from '../_shared/dietCodes.ts'
+import { authorizePatient } from '../_shared/patientAuth.ts'
 
 // ═══════════════════════════════════════════════════════════════════════
+// nm-chat v17.2 — Autorización por paciente + paridad con el dashboard (2026-10-22)
+//   1. access_code en el body: se valida con nm_app_paciente_id (migración 020) y debe
+//      pertenecer a patient_id. Hasta ahora cualquiera con la anon key podía pedir el
+//      contexto clínico de cualquier paciente. Modo soft/strict vía NM_REQUIRE_ACCESS_CODE
+//      (ver _shared/patientAuth.ts): strict solo tras publicar el frontend que envía el código.
+//   2. PLANTILLA BASE con DIET_FALLBACK (D08/D09←D07, D10←D01 cuando < 8 platos) y rotación
+//      por día — espejo exacto de src/lib/diet/templates.js. Antes el chat ofrecía 1 plato a
+//      los pacientes D08/D09/D10 mientras el dashboard mostraba el menú completo.
+//   3. Strings de versión unificados (logs y respuesta decían v16.1 siendo v17.1).
+//   Contrato HTTP: req {message, patient_id, conversation_id?, access_code?} · res sin cambios.
+//
 // nm-chat v17.1 — Fix ReferenceError en intent info_paciente (2026-08-11)
 //   `patient` no existía en el scope de fetchRAGContext (la variable real
 //   es fullPat) → ReferenceError → error genérico al preguntar por perfil
@@ -36,8 +48,14 @@ import { DIET_CODE_MAP } from '../_shared/dietCodes.ts'
 //      datos del paciente + del profesional → sin alucinaciones.
 // ═══════════════════════════════════════════════════════════════════════
 
+const VERSION          = 'v17.2'
 const MODEL_CLASSIFIER = 'deepseek-v4-flash'
 const MODEL_FORMATTER  = 'deepseek-v4-flash'
+
+// Fallback de platos (espejo de src/lib/diet/templates.js): dietas con catálogo escaso
+// (< 8 platos) heredan platos de una dieta compatible más amplia.
+const DIET_FALLBACK: Record<string, string> = { 'D08': 'D07', 'D09': 'D07', 'D10': 'D01' }
+const FALLBACK_MIN_PLATOS = 8
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -315,27 +333,34 @@ async function fetchRAGContext(
     )
   } else if (uniqueDietCodes.length > 0) {
     // ── Caso B: nm_daily_meals vacío → generar plantilla desde catálogos ──
-    console.log(`[v13] nm_daily_meals vacío → generando plantilla para códigos: ${uniqueDietCodes.join(', ')}`)
+    console.log(`[${VERSION}] nm_daily_meals vacío → generando plantilla para códigos: ${uniqueDietCodes.join(', ')}`)
 
-    // Cargar catálogos en paralelo
+    // Códigos a cargar del catálogo: los del paciente + sus fallbacks (solo para platos)
+    const catalogCodes = [...new Set([
+      ...uniqueDietCodes,
+      ...uniqueDietCodes.map(c => DIET_FALLBACK[c]).filter(Boolean),
+    ])]
+
+    // Cargar catálogos en paralelo (name = id estable para deduplicar platos)
     const [mealCatRes, bfCatRes] = await Promise.all([
       supabase
         .from('nm_meal_catalog')
-        .select('name, ingredients, diet_codes, meal_time')
-        .overlaps('diet_codes', uniqueDietCodes)
+        .select('id, name, ingredients, diet_codes, meal_time')
+        .overlaps('diet_codes', catalogCodes)
         .order('name'),
       supabase
         .from('nm_breakfast_catalog')
         .select('name, drinks, bread, toppings, dairy, fruits, extras'),
     ])
 
-    const mealCatalog   = mealCatRes.data || []
+    interface MealRow { id: string; name: string; ingredients: string | null; diet_codes: string[] | null; meal_time: string | null }
+    const mealCatalog   = (mealCatRes.data || []) as MealRow[]
     const bfCatalog     = bfCatRes.data   || []
 
     // Generar plantilla por cada día
     const templateLines: string[] = []
 
-    DAYS_ORDER.forEach(day => {
+    DAYS_ORDER.forEach((day, dayIndex) => {
       // Encontrar el plan para este día (override específico o 'todos')
       const plan =
         resolvedPlans.find(p => p.day_of_week === day) ||
@@ -350,13 +375,25 @@ async function fetchRAGContext(
       const bfRow  = bfCatalog.find(b => b.name === bfName) as Record<string, string> | undefined
       const breakfastText = bfRow ? buildBreakfastText(bfRow) : 'Ver opciones de desayuno con el dietista'
 
-      // Comida/Cena desde nm_meal_catalog
-      const platos = mealCatalog.filter(m =>
-        Array.isArray(m.diet_codes) && m.diet_codes.includes(code)
-      ) as Array<Record<string, string>>
-      const half   = Math.ceil(platos.length / 2)
-      const lunchText  = buildLunchDinnerText(platos, 0)
-      const dinnerText = buildLunchDinnerText(platos, half)
+      // Comida/Cena desde nm_meal_catalog — espejo de buildMealsFromTemplates (frontend):
+      // fallback si < 8 platos y rotación determinista por día (4 posiciones/día).
+      let platos = mealCatalog.filter(m => Array.isArray(m.diet_codes) && m.diet_codes.includes(code))
+      if (platos.length < FALLBACK_MIN_PLATOS) {
+        const fallback = DIET_FALLBACK[code]
+        if (fallback) {
+          const extras = mealCatalog.filter(m =>
+            Array.isArray(m.diet_codes) && m.diet_codes.includes(fallback) &&
+            !platos.some(p => p.id === m.id)
+          )
+          platos = [...platos, ...extras]
+        }
+      }
+      const half      = Math.ceil(platos.length / 2)
+      const lunchOff  = platos.length > 1 ? (dayIndex * 4) % platos.length : 0
+      const dinnerOff = platos.length > 1 ? (lunchOff + half) % platos.length : 0
+      const toText = (p: MealRow): Record<string, string> => ({ name: p.name, ingredients: p.ingredients ?? '' })
+      const lunchText  = buildLunchDinnerText(platos.map(toText), lunchOff)
+      const dinnerText = buildLunchDinnerText(platos.map(toText), dinnerOff)
 
       // Snack
       const snackText = SNACK_MAP[code] || 'Fruta de temporada / Yogur natural'
@@ -635,6 +672,15 @@ Deno.serve(async (req: Request) => {
       )
     }
 
+    // (v17.2) Autorización: access_code debe pertenecer a patient_id (soft/strict según Vault)
+    const auth = await authorizePatient(supabase, patientId, body.access_code, `nm-chat ${VERSION}`)
+    if (!auth.ok) {
+      return new Response(
+        JSON.stringify({ error: auth.error, version: VERSION }),
+        { status: auth.status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
     if (!conversationId) {
       const { data: activeConv } = await supabase
         .from('nm_chat_conversations')
@@ -698,13 +744,13 @@ Deno.serve(async (req: Request) => {
     const classifyStart = Date.now()
     const classification = await classifyIntent(userMessage, patientContext)
     const classifyTime   = Date.now() - classifyStart
-    console.log(`[v16.1 Phase1] intent=${classification.intent} conf=${classification.confidence} (${classifyTime}ms)`)
+    console.log(`[${VERSION} Phase1] intent=${classification.intent} conf=${classification.confidence} (${classifyTime}ms)`)
 
     // FASE 2: RAG (con template auto-fill cuando nm_daily_meals vacío)
     const ragStart   = Date.now()
     const ragContext = await fetchRAGContext(supabase, classification.intent, classification.entities, patientId)
     const ragTime    = Date.now() - ragStart
-    console.log(`[v16.1 Phase2] RAG ${ragContext.length} chars (${ragTime}ms)`)
+    console.log(`[${VERSION} Phase2] RAG ${ragContext.length} chars (${ragTime}ms)`)
 
     // FASE 3: Formatear
     const formatStart = Date.now()
@@ -729,7 +775,7 @@ Deno.serve(async (req: Request) => {
     const formattedResponse = formatResult.text || 'Lo siento, no he podido procesar tu consulta.'
     const formatTime        = Date.now() - formatStart
     const totalTime         = Date.now() - startTime
-    console.log(`[v16.1 Phase3] format ${formatTime}ms | total ${totalTime}ms`)
+    console.log(`[${VERSION} Phase3] format ${formatTime}ms | total ${totalTime}ms`)
 
     if (isDirectCall && conversationId) {
       await supabase.from('nm_chat_messages').insert({
@@ -743,7 +789,7 @@ Deno.serve(async (req: Request) => {
           models:     { classifier: MODEL_CLASSIFIER, formatter: MODEL_FORMATTER },
           timing:     { classify_ms: classifyTime, rag_ms: ragTime, format_ms: formatTime, total_ms: totalTime },
           rag_length: ragContext.length,
-          version: 'v16.1',
+          version: VERSION,
         }
       })
     }
@@ -767,20 +813,20 @@ Deno.serve(async (req: Request) => {
         },
         timing: { classify_ms: classifyTime, rag_ms: ragTime, format_ms: formatTime, total_ms: totalTime },
         models: { classifier: MODEL_CLASSIFIER, formatter: MODEL_FORMATTER },
-        version: 'v16.1',
+        version: VERSION,
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )
 
   } catch (error) {
-    console.error('[nm-chat v16.1] Fatal:', error)
+    console.error(`[nm-chat ${VERSION}] Fatal:`, error)
     return new Response(
       JSON.stringify({
         content: 'Lo siento, ha habido un error. Inténtalo de nuevo.',
         message: 'Lo siento, ha habido un error. Inténtalo de nuevo.',
         error:   String(error),
         timing:  { total_ms: Date.now() - startTime },
-        version: 'v16.1',
+        version: VERSION,
       }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )

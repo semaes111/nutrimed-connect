@@ -1,11 +1,22 @@
+// nm-shopping v8.1 — Autorización por paciente/profesional (2026-10-22)
+//   - Llamada de paciente ({patient_id, access_code}): el código se valida con
+//     nm_app_paciente_id (migración 020) y debe pertenecer a patient_id.
+//   - Llamada de profesional ({patient_id, professional_id} + Authorization: Bearer JWT):
+//     el JWT debe ser del profesional y el paciente debe pertenecerle.
+//   - Modo soft/strict vía NM_REQUIRE_ACCESS_CODE (ver _shared/patientAuth.ts).
+//   - Logs sin datos personales (antes se escribía full_name del paciente).
+//   Contrato HTTP: req {patient_id, professional_id?, access_code?} · res sin cambios.
 // nm-shopping v8.0 — Generador DETERMINISTA (sin LLM)
 // Fuente: nm_food_knowledge + nm_breakfast_catalog + nm_snack_catalog
 // Zero API calls, instant, 100% reliable
 import 'jsr:@supabase/functions-js/edge-runtime.d.ts'
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 import { DIET_CODE_MAP } from '../_shared/dietCodes.ts'
+import { authorizePatient, authorizeProfessional } from '../_shared/patientAuth.ts'
+const VERSION = 'v8.1'
 const SB_URL = Deno.env.get('SUPABASE_URL') ?? ''
 const SB_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+const SB_ANON = Deno.env.get('SUPABASE_ANON_KEY') ?? ''
 
 
 const BREAKFAST_NAME_MAP: Record<string, string> = {
@@ -93,21 +104,42 @@ Deno.serve(async (req: Request): Promise<Response> => {
     { status: 405, headers: { ...cors, 'Content-Type': 'application/json' } })
 
   try {
-    const { patient_id, professional_id } = await req.json()
+    const { patient_id, professional_id, access_code } = await req.json()
     if (!patient_id) return new Response(
       JSON.stringify({ error: 'patient_id requerido' }),
       { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } })
 
     const db = createClient(SB_URL, SB_KEY)
 
+    // (v8.1) Autorización: profesional (JWT) si llega professional_id; paciente (código) si no
+    const auth = professional_id
+      ? await authorizeProfessional(req, {
+          getUserId: async (jwt) => {
+            const { data, error } = await createClient(SB_URL, SB_ANON).auth.getUser(jwt)
+            return error ? null : (data.user?.id ?? null)
+          },
+          getProfessionalAuthUserId: async (pid) => {
+            const { data } = await db.from('nm_professionals').select('auth_user_id').eq('id', pid).eq('is_active', true).maybeSingle()
+            return (data?.auth_user_id as string | undefined) ?? null
+          },
+          getPatientProfessionalId: async (pat) => {
+            const { data } = await db.from('nm_patients').select('professional_id').eq('id', pat).maybeSingle()
+            return (data?.professional_id as string | undefined) ?? null
+          },
+        }, professional_id, patient_id, `nm-shopping ${VERSION}`)
+      : await authorizePatient(db, patient_id, access_code, `nm-shopping ${VERSION}`)
+    if (!auth.ok) return new Response(
+      JSON.stringify({ error: auth.error }),
+      { status: auth.status, headers: { ...cors, 'Content-Type': 'application/json' } })
+
     // 1. Datos del paciente + dietas
     const [{ data: patient }, { data: dietPlans }] = await Promise.all([
-      db.from('nm_patients').select('full_name,food_intolerances').eq('id', patient_id).single(),
+      db.from('nm_patients').select('food_intolerances').eq('id', patient_id).single(),
       db.from('nm_diet_plans').select('diet_type,diet_name,day_of_week').eq('patient_id', patient_id).eq('is_active', true),
     ])
     const dietTypes = [...new Set((dietPlans ?? []).map((p: Record<string, string>) => p.diet_type))]
     const dietCodes = [...new Set(dietTypes.map((s: string) => DIET_CODE_MAP[s]).filter(Boolean))]
-    console.log(`[v8.0] patient=${patient?.full_name} codes=${dietCodes.join(',')}`)
+    console.log(`[${VERSION}] patient_id=${patient_id} auth=${auth.mode} codes=${dietCodes.join(',')}`)
 
     if (dietCodes.length === 0) {
       const emptyItems: Items = { proteinas: [], hidratos: [], verduras: [], frutas: [], grasas: [], lacteos: [], legumbres: [], especias: [], bebidas: [], snacks: [], congelados: [], conservas: [] }
@@ -194,18 +226,18 @@ Deno.serve(async (req: Request): Promise<Response> => {
       is_current: true, generated_at: new Date().toISOString(),
     }).select('id').single()
     if (ie) {
-      console.error('[v8.0] insert:', ie)
+      console.error(`[${VERSION}] insert:`, ie)
       return new Response(JSON.stringify({ error: 'Error al guardar' }),
         { status: 500, headers: { ...cors, 'Content-Type': 'application/json' } })
     }
 
     const total = Object.values(items).reduce((a, v) => a + v.length, 0)
-    console.log(`[v8.0] OK patient=${patient?.full_name} items=${total} deduped=${totalRemoved} id=${newList?.id}`)
+    console.log(`[${VERSION}] OK patient_id=${patient_id} items=${total} deduped=${totalRemoved} id=${newList?.id}`)
     return new Response(JSON.stringify({ success: true, id: newList?.id, total_items: total, removed: totalRemoved }),
       { status: 200, headers: { ...cors, 'Content-Type': 'application/json' } })
 
   } catch (err) {
-    console.error('[v8.0]', err)
+    console.error(`[${VERSION}]`, err)
     return new Response(JSON.stringify({ error: 'Error interno' }),
       { status: 500, headers: { ...cors, 'Content-Type': 'application/json' } })
   }

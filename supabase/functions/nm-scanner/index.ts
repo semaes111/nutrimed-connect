@@ -1,8 +1,19 @@
 import 'jsr:@supabase/functions-js/edge-runtime.d.ts'
 import { createClient } from 'npm:@supabase/supabase-js@2'
 import { DIET_CODE_MAP } from '../_shared/dietCodes.ts'
+import { authorizePatient } from '../_shared/patientAuth.ts'
 
 // ═══════════════════════════════════════════════════════════════════════
+// nm-scanner v3.1 — Autorización por paciente + límite de imagen (2026-10-22)
+//   - access_code en el body: se valida con nm_app_paciente_id (migración 020) y debe
+//     pertenecer a patient_id (modo soft/strict vía NM_REQUIRE_ACCESS_CODE, ver
+//     _shared/patientAuth.ts). Antes cualquiera con la anon key podía escanear contra
+//     cualquier paciente y consumir cuota Gemini/DeepSeek sin límite.
+//   - Límite de tamaño del payload de imagen (MAX_IMAGE_BASE64_CHARS ≈ 4 MB): 413.
+//     El frontend ya reduce a ≤1024px; el servidor deja de confiar en el cliente.
+//   - Logs con la versión real (decían v1).
+//   Contrato HTTP: req {image_base64, mime_type, patient_id, access_code?} · res ScanResponse sin cambios.
+//
 // nm-scanner v3.0 — Migración MiMo → Gemini (visión) + DeepSeek (texto) (2026-08-11)
 //   Xiaomi revocó la MIMO_API_KEY por TERCERA vez (401 Invalid API Key).
 //   Historial MiMo: key revocada (mayo) → modelos retirados (julio) → key
@@ -67,9 +78,12 @@ import { DIET_CODE_MAP } from '../_shared/dietCodes.ts'
 //   - DIET_CODE_MAP compartido via ../_shared/dietCodes.ts (sincronizado con frontend)
 // ═══════════════════════════════════════════════════════════════════════
 
+const VERSION      = 'v3.1'
 const MODEL_VISION = 'gemini-2.5-flash'
 const MODEL_DIET   = 'deepseek-v4-flash'
 const SUGAR_THRESHOLD = 4.0
+// 4 MB de imagen ≈ 5,6 M caracteres base64 (el frontend envía ≤1024px, muy por debajo)
+const MAX_IMAGE_BASE64_CHARS = 5_600_000
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -332,7 +346,7 @@ async function phaseLoadDiet(
     .map((f: { name: string }) => f.name)
 
   console.log(
-    `[nm-scanner v1] patient=${patientId} codes=${uniqueWeekCodes.join(',')} foods=${allowedFoods.length}`
+    `[nm-scanner ${VERSION}] patient=${patientId} codes=${uniqueWeekCodes.join(',')} foods=${allowedFoods.length}`
   )
 
   return { allowedFoods, hasDiet: true }
@@ -493,7 +507,7 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
-    const { image_base64, mime_type, patient_id } = await req.json()
+    const { image_base64, mime_type, patient_id, access_code } = await req.json()
 
     if (!image_base64 || !mime_type || !patient_id) {
       return new Response(
@@ -502,10 +516,26 @@ Deno.serve(async (req: Request) => {
       )
     }
 
+    if (typeof image_base64 !== 'string' || image_base64.length > MAX_IMAGE_BASE64_CHARS) {
+      return new Response(
+        JSON.stringify({ error: 'Imagen demasiado grande (máx. 4 MB)' }),
+        { status: 413, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
     const db = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     )
+
+    // (v3.1) Autorización: access_code debe pertenecer a patient_id (soft/strict según Vault)
+    const auth = await authorizePatient(db, patient_id, access_code, `nm-scanner ${VERSION}`)
+    if (!auth.ok) {
+      return new Response(
+        JSON.stringify({ error: auth.error }),
+        { status: auth.status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
 
     // ── Fases en paralelo donde sea posible ───────────────────────────
     // Fase 1 (visión) y Fase 2 (dieta) se pueden lanzar en paralelo
@@ -515,7 +545,7 @@ Deno.serve(async (req: Request) => {
     ])
 
     console.log(
-      `[nm-scanner v1] vision: category="${vision.product_category}" sugar=${vision.sugar_g_per_100} conf=${vision.confidence}`
+      `[nm-scanner ${VERSION}] vision: category="${vision.product_category}" sugar=${vision.sugar_g_per_100} conf=${vision.confidence}`
     )
 
     // Fase 3 — razonamiento dietético (depende de fase 1 y 2)
@@ -523,20 +553,20 @@ Deno.serve(async (req: Request) => {
     if (vision.confidence !== 'low' && hasDiet) {
       dietResult = await phaseDietCheck(vision.product_category, allowedFoods)
       console.log(
-        `[nm-scanner v1] diet check: in_diet=${dietResult.in_diet} matched="${dietResult.matched_food}"`
+        `[nm-scanner ${VERSION}] diet check: in_diet=${dietResult.in_diet} matched="${dietResult.matched_food}"`
       )
     }
 
     // Fase 4 — veredicto
     const response = phaseVerdict(vision, dietResult, hasDiet)
-    console.log(`[nm-scanner v1] verdict: allowed=${response.allowed} reason=${response.reason}`)
+    console.log(`[nm-scanner ${VERSION}] verdict: allowed=${response.allowed} reason=${response.reason}`)
 
     return new Response(JSON.stringify(response), {
       status: 200,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     })
   } catch (err) {
-    console.error('[nm-scanner v3.0] unexpected error:', err)
+    console.error(`[nm-scanner ${VERSION}] unexpected error:`, err)
     return new Response(
       JSON.stringify({ error: 'Error interno del servidor' }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }

@@ -17,9 +17,14 @@ import { Calendar, AlertTriangle, Trash2, ChevronDown } from 'lucide-react'
 async function triggerShoppingRegen(patientId, professionalId) {
   try {
     const url = `${import.meta.env.VITE_SUPABASE_URL || 'https://bpazmmbjjducdmxgfoum.supabase.co'}/functions/v1/nm-shopping`
+    // JWT del profesional: nm-shopping v8.1 verifica que professional_id es el usuario autenticado
+    // y que el paciente le pertenece (las llamadas del paciente van con access_code).
+    const { data: { session } } = await supabase.auth.getSession()
+    const headers = { 'Content-Type': 'application/json' }
+    if (session?.access_token) headers.Authorization = `Bearer ${session.access_token}`
     await fetch(url, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers,
       body: JSON.stringify({ patient_id: patientId, professional_id: professionalId }),
     })
   } catch {

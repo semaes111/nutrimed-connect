@@ -7,7 +7,7 @@ import { usePageTheme } from '../../lib/usePageTheme'
 import { Pill, Clock, AlertTriangle, ChevronDown, ChevronUp, Info } from 'lucide-react'
 
 export default function MedsView() {
-  const { profile } = useAuth()
+  const { profile, patientCode } = useAuth()
   const tc = usePageTheme()
   const [meds, setMeds]       = useState([])
   const [loading, setLoading] = useState(true)
@@ -15,14 +15,16 @@ export default function MedsView() {
 
   const NEU_CARD = { background: tc.cardBg, border: tc.cardBorder, boxShadow: tc.cardShadow, borderRadius: 20 }
 
-  useEffect(() => { if (profile?.id) load() }, [profile?.id])
+  useEffect(() => { if (profile?.id && patientCode) load() }, [profile?.id, patientCode])
 
+  // Lectura por código (RPC nm_app_medicaciones, migración 020): solo la medicación del dueño del código.
   async function load() {
     setLoading(true)
-    const { data } = await supabase.from('nm_medications').select('*')
-      .eq('patient_id', profile.id)
+    const { data, error } = await supabase
+      .rpc('nm_app_medicaciones', { p_codigo: patientCode })
       .order('is_active', { ascending: false })
       .order('created_at', { ascending: false })
+    if (error) console.error('[MedsView] load error:', error)
     setMeds(data || [])
     setLoading(false)
   }

@@ -1,19 +1,18 @@
 import { useState, useRef, useEffect } from 'react'
 import { useAuth } from '../../lib/AuthContext'
-import { supabase } from '../../lib/supabase'
+import { supabase, SUPABASE_URL, SUPABASE_ANON_KEY } from '../../lib/supabase'
 import PatientLayout from '../../components/layout/PatientLayout'
 import { usePageTheme } from '../../lib/usePageTheme'
 import { Send, Bot, User } from 'lucide-react'
 
-// EDGE_URL hardcodeada — los Build ARGs de Dokploy no se inyectan en Vite en build time
-const EDGE_URL  = 'https://bpazmmbjjducdmxgfoum.supabase.co/functions/v1/nm-chat'
-// ANON_KEY hardcodeada por el mismo motivo — es pública por diseño (Supabase + RLS)
-// La SERVICE_ROLE_KEY fue eliminada: la Edge Function usa su propia SERVICE_ROLE_KEY
-// como variable de entorno del servidor, nunca expuesta al cliente.
-const ANON_KEY  = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJwYXptbWJqamR1Y2RteGdmb3VtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njc4MjY1MTksImV4cCI6MjA4MzQwMjUxOX0.uZd2m7JMXd_i-bZVsTQTcqTEhJMxLXwvdPLK74h07Kw'
+// URL y anon key vienen de src/lib/supabase.js (fallbacks hardcodeados allí — los Build ARGs de
+// Dokploy no se inyectan en Vite en build time). La anon key es pública por diseño (Supabase + RLS).
+// La SERVICE_ROLE_KEY vive solo en la Edge Function, nunca en el cliente.
+const EDGE_URL  = `${SUPABASE_URL}/functions/v1/nm-chat`
+const ANON_KEY  = SUPABASE_ANON_KEY
 
 export default function PatientChat() {
-  const { profile } = useAuth()
+  const { profile, patientCode } = useAuth()
   const tc = usePageTheme()
   const [messages, setMessages] = useState([])
   const [input, setInput]       = useState('')
@@ -62,29 +61,32 @@ export default function PatientChat() {
   }
 
   useEffect(() => { scrollRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages, loading])
-  useEffect(() => { if (profile?.id) loadOrCreateConversation() }, [profile?.id])
+  useEffect(() => { if (profile?.id && patientCode) loadConversation() }, [profile?.id, patientCode])
 
-  async function loadOrCreateConversation() {
+  // Historial por código (RPC nm_app_conversaciones / nm_app_mensajes, migración 020).
+  // Misma resolución que la Edge Function: conversación activa más reciente por updated_at.
+  // El frontend YA NO crea conversaciones: nm-chat es el único owner de la persistencia
+  // (crea la conversación con el primer mensaje y devuelve conversation_id).
+  async function loadConversation() {
     try {
-      const { data: existing, error: err1 } = await supabase
-        .from('nm_chat_conversations').select('id')
-        .eq('patient_id', profile.id).order('created_at', { ascending: false }).limit(1)
+      const { data: convs, error: err1 } = await supabase
+        .rpc('nm_app_conversaciones', { p_codigo: patientCode })
+        .eq('is_active', true)
+        .order('updated_at', { ascending: false })
+        .limit(1)
       if (err1) throw err1
 
-      if (existing?.length) {
-        setConvId(existing[0].id)
-        const { data: msgs, error: err2 } = await supabase.from('nm_chat_messages').select('*')
-          .eq('conversation_id', existing[0].id).order('created_at', { ascending: true })
+      if (convs?.length) {
+        const id = convs[0].id
+        setConvId(id)
+        const { data: msgs, error: err2 } = await supabase
+          .rpc('nm_app_mensajes', { p_codigo: patientCode, p_conversation_id: id })
+          .order('created_at', { ascending: true })
         if (err2) throw err2
         if (msgs?.length) setMessages(msgs.map(m => ({ id: m.id, role: m.role, content: m.content })))
-      } else {
-        const { data: newConv, error: err3 } = await supabase.from('nm_chat_conversations')
-          .insert({ patient_id: profile.id, title: 'Chat nutricional' }).select().single()
-        if (err3) throw err3
-        if (newConv) setConvId(newConv.id)
       }
     } catch (err) {
-      console.error('[PatientChat] loadOrCreateConversation error:', err)
+      console.error('[PatientChat] loadConversation error:', err)
       setError('No se pudo cargar el historial del chat.')
     }
   }
@@ -104,13 +106,17 @@ export default function PatientChat() {
     setLoading(true)
 
     try {
+      // Contrato nm-chat: { message, patient_id, conversation_id?, access_code }.
+      // La EF carga el historial de BD (no hace falta enviarlo) y valida que access_code
+      // pertenece a patient_id (nm-chat v17.2).
       const res = await fetch(EDGE_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${ANON_KEY}` },
         body: JSON.stringify({
           message: text,
           patient_id: profile.id,
-          conversation_history: messages.map(m => ({ role: m.role, content: m.content })),
+          conversation_id: convId,
+          access_code: patientCode,
         }),
       })
 
@@ -123,6 +129,7 @@ export default function PatientChat() {
       const reply = data?.content || data?.message || data?.response || 'Sin respuesta del asistente.'
       const assistantMsg = { id: Date.now() + 1, role: 'assistant', content: reply }
       setMessages(prev => [...prev, assistantMsg])
+      if (data?.conversation_id && data.conversation_id !== convId) setConvId(data.conversation_id)
 
       // NOTA: La persistencia en nm_chat_messages la gestiona la Edge Function
       // cuando recibe { message, patient_id } (isDirectCall=true).

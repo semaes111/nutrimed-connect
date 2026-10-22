@@ -8,7 +8,7 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 import { Plus, TrendingDown, Target, Scale } from 'lucide-react'
 
 export default function WeightTracker() {
-  const { profile } = useAuth()
+  const { profile, patientCode } = useAuth()
   const tc = usePageTheme()
   const [records, setRecords] = useState([])
   const [loading, setLoading] = useState(true)
@@ -16,38 +16,44 @@ export default function WeightTracker() {
   const [newWeight, setNewWeight] = useState('')
   const [newNote, setNewNote] = useState('')
   const [saving, setSaving] = useState(false)
+  const [saveError, setSaveError] = useState(null)
 
   const NEU_CARD  = { background: tc.cardBg, border: tc.cardBorder, boxShadow: tc.cardShadow, borderRadius: 20 }
   const NEU_STAT  = { ...NEU_CARD, padding: 14, borderRadius: 18 }
 
-  useEffect(() => { if (profile?.id) load() }, [profile?.id])
+  useEffect(() => { if (profile?.id && patientCode) load() }, [profile?.id, patientCode])
 
+  // Lectura por código (RPC nm_app_pesos, migración 020): solo devuelve los pesos del dueño del código.
   async function load() {
     setLoading(true)
-    const { data } = await supabase
-      .from('nm_weight_records').select('*')
-      .eq('patient_id', profile.id).order('date', { ascending: true })
+    const { data, error } = await supabase
+      .rpc('nm_app_pesos', { p_codigo: patientCode })
+      .order('date', { ascending: true })
+    if (error) console.error('[WeightTracker] load error:', error)
     setRecords(data || [])
     setLoading(false)
   }
 
+  // Escritura por código (RPC nm_app_registrar_peso, migración 004): guarda el peso del día
+  // y sincroniza nm_patients.current_weight en servidor (antes el UPDATE anónimo se perdía).
   async function handleSave(e) {
     e.preventDefault()
     if (!newWeight) return
     setSaving(true)
-    const today    = new Date().toISOString().split('T')[0]
-    const existing = records.find(r => r.date === today)
-    if (existing) {
-      await supabase.from('nm_weight_records').update({ weight: parseFloat(newWeight), notes: newNote || null }).eq('id', existing.id)
-    } else {
-      await supabase.from('nm_weight_records').insert({
-        patient_id: profile.id, weight: parseFloat(newWeight),
-        date: today, notes: newNote || null, recorded_by: 'patient',
-      })
+    setSaveError(null)
+    const today = new Date().toISOString().split('T')[0]
+    const { error } = await supabase.rpc('nm_app_registrar_peso', {
+      p_codigo: patientCode,
+      p_peso:   parseFloat(newWeight),
+      p_fecha:  today,
+      p_nota:   newNote || null,
+    })
+    if (error) {
+      console.error('[WeightTracker] save error:', error)
+      setSaveError('No se pudo guardar el peso. Inténtalo de nuevo.')
+      setSaving(false)
+      return
     }
-    await supabase.from('nm_patients')
-      .update({ current_weight: parseFloat(newWeight), updated_at: new Date().toISOString() })
-      .eq('id', profile.id)
     setNewWeight(''); setNewNote(''); setShowForm(false); setSaving(false); load()
   }
 
@@ -110,6 +116,9 @@ export default function WeightTracker() {
             <input type="text" className="input flex-1" placeholder="Nota (opcional)"
               value={newNote} onChange={e => setNewNote(e.target.value)} />
           </div>
+          {saveError && (
+            <p className="text-xs font-medium" style={{ color: tc.textDanger }}>{saveError}</p>
+          )}
           <div className="flex gap-2">
             <button type="button" onClick={() => setShowForm(false)} className="btn btn-secondary btn-sm flex-1">Cancelar</button>
             <button type="submit" disabled={saving || !newWeight} className="btn btn-primary btn-sm flex-1">

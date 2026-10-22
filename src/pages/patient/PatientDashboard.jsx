@@ -129,7 +129,7 @@ function MealDots({ meals, isDark }) {
    COMPONENTE PRINCIPAL
    ═══════════════════════════════════════════════════════════════════════ */
 export default function PatientDashboard() {
-  const { profile } = useAuth()
+  const { profile, patientCode } = useAuth()
   const tc = usePageTheme()
   const MEAL_CONFIG = getMealConfig(tc.isDark)
 
@@ -149,17 +149,19 @@ export default function PatientDashboard() {
     border: tc.cardInsetBorder, borderRadius: 16,
   }
 
-  useEffect(() => { if (profile?.id) loadDashboard() }, [profile?.id])
+  useEffect(() => { if (profile?.id && patientCode) loadDashboard() }, [profile?.id, patientCode])
 
   async function loadDashboard() {
     try {
       setLoading(true); setError(null)
-      const pid = profile.id
+      // Datos del paciente por código (RPC nm_app_*, migración 020): cada función devuelve
+      // SOLO las filas del dueño del código. Los catálogos siguen siendo lectura pública.
+      const code = patientCode
       const [plansRes, weightsRes, medsRes, mealsRes, mealCatRes, bfastRes, snackCatRes] = await Promise.all([
-        supabase.from('nm_diet_plans').select('*').eq('patient_id', pid).eq('is_active', true),
-        supabase.from('nm_weight_records').select('*').eq('patient_id', pid).order('date', { ascending: false }).order('created_at', { ascending: false }).limit(10),
-        supabase.from('nm_medications').select('*').eq('patient_id', pid).eq('is_active', true),
-        supabase.from('nm_daily_meals').select('*').eq('patient_id', pid).eq('is_active', true),
+        supabase.rpc('nm_app_dietas', { p_codigo: code }),
+        supabase.rpc('nm_app_pesos', { p_codigo: code }).order('date', { ascending: false }).order('created_at', { ascending: false }).limit(10),
+        supabase.rpc('nm_app_medicaciones', { p_codigo: code }).eq('is_active', true),
+        supabase.rpc('nm_app_comidas', { p_codigo: code }),
         supabase.from('nm_meal_catalog').select('*').order('name'),
         supabase.from('nm_breakfast_catalog').select('*'),
         supabase.from('nm_snack_catalog').select('*'),

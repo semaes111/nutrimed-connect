@@ -25,7 +25,7 @@ const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || 'https://bpazmmbjjducd
 // 'idle' | 'preview' | 'analyzing' | 'result'
 
 export default function LabelScanner() {
-  const { profile } = useAuth()
+  const { profile, patientCode } = useAuth()
   const tc = usePageTheme()
 
   const [state, setState] = useState('idle')
@@ -67,6 +67,7 @@ export default function LabelScanner() {
     setError(null)
 
     try {
+      // access_code: la Edge Function comprueba que el código pertenece a patient_id (nm-scanner v3.1)
       const res = await fetch(`${SUPABASE_URL}/functions/v1/nm-scanner`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -74,6 +75,7 @@ export default function LabelScanner() {
           image_base64: imageData.base64,
           mime_type: imageData.mimeType,
           patient_id: profile.id,
+          access_code: patientCode,
         }),
       })
 

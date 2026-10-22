@@ -127,7 +127,7 @@ function CategoryCard({ category, items, checked, onToggle, tc }) {
    COMPONENTE PRINCIPAL
    ═══════════════════════════════════════════════════════════════════ */
 export default function ShoppingList() {
-  const { profile } = useAuth()
+  const { profile, patientCode } = useAuth()
   const tc = usePageTheme()
 
   const [list,      setList]      = useState(null)
@@ -139,17 +139,15 @@ export default function ShoppingList() {
   const [updateMsg, setUpdateMsg] = useState(null)        // feedback éxito/error/sin dieta
   const [hasDiet,   setHasDiet]   = useState(null)        // null=sin comprobar, true/false
 
-  useEffect(() => { if (profile?.id) loadList() }, [profile?.id])
+  useEffect(() => { if (profile?.id && patientCode) loadList() }, [profile?.id, patientCode])
 
+  // Lectura por código (RPC nm_app_lista_compra, migración 020): solo la lista vigente del dueño del código.
   async function loadList() {
     try {
       setLoading(true)
       setError(null)
       const { data, error: dbErr } = await supabase
-        .from('nm_shopping_lists')
-        .select('*')
-        .eq('patient_id', profile.id)
-        .eq('is_current', true)
+        .rpc('nm_app_lista_compra', { p_codigo: patientCode })
         .order('generated_at', { ascending: false })
         .limit(1)
         .maybeSingle()
@@ -174,15 +172,14 @@ export default function ShoppingList() {
     setUpdating(true)
     setUpdateMsg(null)
     try {
-      // 1 — Verificar si hay planes de dieta activos para este paciente
-      const { count, error: countErr } = await supabase
-        .from('nm_diet_plans')
-        .select('id', { count: 'exact', head: true })
-        .eq('patient_id', profile.id)
-        .eq('is_active', true)
+      // 1 — Verificar si hay planes de dieta activos para este paciente (RPC por código)
+      const { data: plans, error: countErr } = await supabase
+        .rpc('nm_app_dietas', { p_codigo: patientCode })
+        .select('id')
 
       if (countErr) throw countErr
 
+      const count = plans?.length || 0
       if (!count || count === 0) {
         // Sin dieta asignada — feedback amarillo, no llamar a la Edge Function
         setHasDiet(false)
@@ -195,10 +192,11 @@ export default function ShoppingList() {
       // 2 — Hay dieta → llamar a nm-shopping para regenerar
       setHasDiet(true)
       const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || 'https://bpazmmbjjducdmxgfoum.supabase.co'
+      // access_code: la Edge Function comprueba que el código pertenece a patient_id (nm-shopping v8.1)
       const res = await fetch(`${SUPABASE_URL}/functions/v1/nm-shopping`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ patient_id: profile.id }),
+        body: JSON.stringify({ patient_id: profile.id, access_code: patientCode }),
       })
 
       if (!res.ok) throw new Error(`nm-shopping status ${res.status}`)

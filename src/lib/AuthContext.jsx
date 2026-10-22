@@ -14,10 +14,25 @@ function safeRemoveItem(key) {
   try { localStorage.removeItem(key) } catch { /* ignore */ }
 }
 
+// Acceso del paciente por código (2026-10-22): las lecturas del paciente pasan por las RPC
+// nm_app_*(p_codigo) (migración 020). nm_app_login valida en servidor que el código existe,
+// no está bloqueado ni caducado, y devuelve SOLO la ficha de su dueño (0 filas si no).
+// Sustituye a la lectura directa de nm_access_codes / nm_patients con la clave anónima,
+// que exponía todas las fichas y códigos a cualquiera.
+async function fetchPatientByCode(code) {
+  const { data, error } = await supabase
+    .rpc('nm_app_login', { p_codigo: code })
+    .limit(1)
+    .maybeSingle()
+  if (error) throw error
+  return data || null
+}
+
 export function AuthProvider({ children }) {
   const [session, setSession] = useState(null)
   const [role, setRole] = useState(null) // 'professional' | 'patient' | null
   const [profile, setProfile] = useState(null)
+  const [patientCode, setPatientCode] = useState(null) // código de acceso de la sesión paciente
   const [loading, setLoading] = useState(true)
 
   // Resolve role + profile from session
@@ -28,13 +43,12 @@ export function AuthProvider({ children }) {
       if (patientSession) {
         try {
           const ps = JSON.parse(patientSession)
-          if (ps.patient_id && new Date(ps.expires_at) > new Date()) {
-            const { data: patient } = await supabase
-              .from('nm_patients')
-              .select('*')
-              .eq('id', ps.patient_id)
-              .maybeSingle()
-            if (patient && !patient.is_blocked) {
+          // expires_at puede ser null (lo decide el servidor); si existe, se respeta como defensa extra
+          const notExpired = !ps.expires_at || new Date(ps.expires_at) > new Date()
+          if (ps.patient_id && ps.code && notExpired) {
+            const patient = await fetchPatientByCode(ps.code)
+            if (patient && patient.id === ps.patient_id && !patient.is_blocked) {
+              setPatientCode(ps.code)
               setRole('patient')
               setProfile(patient)
               return
@@ -96,31 +110,31 @@ export function AuthProvider({ children }) {
     return data
   }
 
-  // Patient login with access code
+  // Patient login with access code (validación íntegra en servidor vía nm_app_login)
   const loginPatient = async (code) => {
     const trimmed = code.trim().toUpperCase()
-    const { data: ac, error } = await supabase
-      .from('nm_access_codes')
-      .select('*, patient:nm_patients(*)')
-      .eq('access_code', trimmed)
-      .eq('is_blocked', false)
-      .maybeSingle()
+    let patient
+    try {
+      patient = await fetchPatientByCode(trimmed)
+    } catch (err) {
+      console.error('[AuthContext] loginPatient error:', err)
+      throw new Error('No se pudo validar el código. Inténtalo de nuevo.', { cause: err })
+    }
+    // 0 filas = inexistente, bloqueado o caducado: un único mensaje (sin oráculo de estado)
+    if (!patient || patient.is_blocked) throw new Error('Código no válido o caducado. Contacte con su consulta.')
 
-    if (error || !ac) throw new Error('Código no válido')
-    if (new Date(ac.code_expiry) < new Date()) throw new Error('Código expirado. Contacte con su consulta.')
-    if (ac.patient?.is_blocked) throw new Error('Acceso bloqueado. Contacte con su consulta.')
-
-    // Store patient session
+    // Store patient session (misma forma que antes: patient_id, code, expires_at, logged_at)
     const patientSession = {
-      patient_id: ac.patient_id,
+      patient_id: patient.id,
       code: trimmed,
-      expires_at: ac.code_expiry,
+      expires_at: patient.code_expiry || null,
       logged_at: new Date().toISOString()
     }
     safeSetItem('nm_patient_session', JSON.stringify(patientSession))
+    setPatientCode(trimmed)
     setRole('patient')
-    setProfile(ac.patient)
-    return ac.patient
+    setProfile(patient)
+    return patient
   }
 
   const logout = async () => {
@@ -129,10 +143,11 @@ export function AuthProvider({ children }) {
     setSession(null)
     setRole(null)
     setProfile(null)
+    setPatientCode(null)
   }
 
   return (
-    <AuthContext.Provider value={{ session, role, profile, loading, loginPro, loginPatient, logout, setProfile }}>
+    <AuthContext.Provider value={{ session, role, profile, patientCode, loading, loginPro, loginPatient, logout, setProfile }}>
       {children}
     </AuthContext.Provider>
   )
